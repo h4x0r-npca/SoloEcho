@@ -1,0 +1,26 @@
+name: soloecho
+description: A private Google Drive-backed solo SNS timeline.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  extension_google_sign_in_as_googleapis_auth: ^2.0.13
+  google_sign_in: ^6.2.2
+  googleapis: ^16.0.0
+  http: ^1.2.2
+  intl: ^0.20.2
+  oauth2: ^2.0.5
+  url_launcher: ^6.3.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
