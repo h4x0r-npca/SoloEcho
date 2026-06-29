@@ -6,7 +6,11 @@ import 'package:flutter/services.dart';
 import '../models/solo_echo_account.dart';
 import '../models/timeline_entry.dart';
 import '../models/workspace_info.dart';
+import '../models/writing_mode.dart';
+import '../utils/timestamp_formatter.dart';
+import 'profile_avatar.dart';
 import 'settings_sheet.dart';
+import 'thread_timeline_screen.dart';
 import 'timeline_screen.dart';
 
 class HomeScaffold extends StatefulWidget {
@@ -15,22 +19,26 @@ class HomeScaffold extends StatefulWidget {
     required this.account,
     required this.workspace,
     required this.entries,
+    required this.writingMode,
     required this.isLoadingTimeline,
     required this.isSaving,
     required this.lastSync,
     required this.onRefresh,
     required this.onSave,
+    required this.onWritingModeChanged,
     required this.onSignOut,
   });
 
   final SoloEchoAccount account;
   final WorkspaceInfo workspace;
   final List<TimelineEntry> entries;
+  final WritingMode writingMode;
   final bool isLoadingTimeline;
   final bool isSaving;
   final DateTime? lastSync;
   final Future<void> Function() onRefresh;
-  final Future<void> Function(String content) onSave;
+  final Future<void> Function(String content, DateTime timestamp) onSave;
+  final Future<void> Function(WritingMode mode) onWritingModeChanged;
   final Future<void> Function() onSignOut;
 
   @override
@@ -48,7 +56,8 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   bool _isSending = false;
   bool _isApplyingShiftNewLine = false;
   String _lastInputText = '';
-  String _clockText = _formatLiveClock(DateTime.now());
+  DateTime _clockTimestamp = DateTime.now();
+  late String _clockText = TimestampFormatter.format(_clockTimestamp);
 
   bool get _canSend =>
       _controller.text.trim().isNotEmpty && !widget.isSaving && !_isSending;
@@ -61,8 +70,10 @@ class _HomeScaffoldState extends State<HomeScaffold> {
       if (!mounted) {
         return;
       }
+      final now = DateTime.now();
       setState(() {
-        _clockText = _formatLiveClock(DateTime.now());
+        _clockTimestamp = now;
+        _clockText = TimestampFormatter.format(now);
       });
     });
   }
@@ -90,35 +101,68 @@ class _HomeScaffoldState extends State<HomeScaffold> {
           ),
         ],
       ),
-      body: Column(
-        children: <Widget>[
-          Expanded(
-            child: TimelineScreen(
-              account: widget.account,
-              entries: widget.entries,
-              isLoading: widget.isLoadingTimeline,
-              onRefresh: widget.onRefresh,
-            ),
+      body: widget.writingMode == WritingMode.thread
+          ? _buildThreadBody()
+          : _buildChatBody(),
+    );
+  }
+
+  Widget _buildChatBody() {
+    return Column(
+      children: <Widget>[
+        Expanded(
+          child: TimelineScreen(
+            account: widget.account,
+            entries: widget.entries,
+            isLoading: widget.isLoadingTimeline,
+            onRefresh: widget.onRefresh,
           ),
-          SafeArea(
-            top: false,
-            child: _ChatComposer(
-              controller: _controller,
-              focusNode: _inputFocusNode,
-              clockText: _clockText,
-              isLongMode: _isLongMode,
-              isSaving: widget.isSaving || _isSending,
-              canSend: _canSend,
-              onLongModeChanged: (value) {
-                setState(() {
-                  _isLongMode = value;
-                });
-              },
-              onSend: _sendCurrentText,
-            ),
+        ),
+        SafeArea(
+          top: false,
+          child: _ChatComposer(
+            controller: _controller,
+            focusNode: _inputFocusNode,
+            clockText: _clockText,
+            isLongMode: _isLongMode,
+            isSaving: widget.isSaving || _isSending,
+            canSend: _canSend,
+            onLongModeChanged: (value) {
+              setState(() {
+                _isLongMode = value;
+              });
+            },
+            onSend: _sendCurrentText,
           ),
-        ],
-      ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildThreadBody() {
+    return Column(
+      children: <Widget>[
+        SafeArea(
+          bottom: false,
+          child: _ThreadComposer(
+            account: widget.account,
+            controller: _controller,
+            focusNode: _inputFocusNode,
+            clockText: _clockText,
+            isSaving: widget.isSaving || _isSending,
+            canSend: _canSend,
+            onSend: _sendCurrentText,
+          ),
+        ),
+        Expanded(
+          child: ThreadTimelineScreen(
+            account: widget.account,
+            entries: widget.entries,
+            isLoading: widget.isLoadingTimeline,
+            onRefresh: widget.onRefresh,
+          ),
+        ),
+      ],
     );
   }
 
@@ -130,7 +174,9 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         return SettingsSheet(
           account: widget.account,
           workspace: widget.workspace,
+          writingMode: widget.writingMode,
           lastSync: widget.lastSync,
+          onWritingModeChanged: widget.onWritingModeChanged,
           onSignOut: () async {
             Navigator.of(context).pop();
             await widget.onSignOut();
@@ -151,7 +197,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     });
 
     try {
-      await widget.onSave(content);
+      await widget.onSave(content, _clockTimestamp);
       if (mounted) {
         _controller.clear();
         _lastInputText = '';
@@ -166,7 +212,9 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   }
 
   KeyEventResult _handleInputKeyEvent(FocusNode node, KeyEvent event) {
-    if (_isLongMode || event is! KeyDownEvent) {
+    if (widget.writingMode == WritingMode.thread ||
+        _isLongMode ||
+        event is! KeyDownEvent) {
       return KeyEventResult.ignored;
     }
 
@@ -216,7 +264,8 @@ class _HomeScaffoldState extends State<HomeScaffold> {
       return;
     }
 
-    if (!_isLongMode &&
+    if (widget.writingMode == WritingMode.chat &&
+        !_isLongMode &&
         didAddNewLine &&
         !HardwareKeyboard.instance.isShiftPressed) {
       _lastInputText = currentText;
@@ -233,18 +282,108 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   static int _countNewLines(String value) {
     return '\n'.allMatches(value).length;
   }
+}
 
-  static String _formatLiveClock(DateTime value) {
-    final local = value.toLocal();
-    final date = '${local.year.toString().padLeft(4, '0')}-'
-        '${local.month.toString().padLeft(2, '0')}-'
-        '${local.day.toString().padLeft(2, '0')}';
-    final time = '${local.hour.toString().padLeft(2, '0')}:'
-        '${local.minute.toString().padLeft(2, '0')}:'
-        '${local.second.toString().padLeft(2, '0')}';
-    final fractional = '${local.millisecond.toString().padLeft(3, '0')}'
-        '${local.microsecond.toString().padLeft(3, '0')}';
-    return '$date $time.$fractional';
+class _ThreadComposer extends StatelessWidget {
+  const _ThreadComposer({
+    required this.account,
+    required this.controller,
+    required this.focusNode,
+    required this.clockText,
+    required this.isSaving,
+    required this.canSend,
+    required this.onSend,
+  });
+
+  final SoloEchoAccount account;
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final String clockText;
+  final bool isSaving;
+  final bool canSend;
+  final Future<void> Function() onSend;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(color: theme.colorScheme.outlineVariant),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            ProfileAvatar(account: account),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  TextField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    minLines: 3,
+                    maxLines: 8,
+                    textInputAction: TextInputAction.newline,
+                    keyboardType: TextInputType.multiline,
+                    textAlignVertical: TextAlignVertical.top,
+                    style: theme.textTheme.bodyLarge?.copyWith(height: 1.45),
+                    decoration: InputDecoration(
+                      hintText: '오늘은 어떤 하루였나요?',
+                      filled: true,
+                      fillColor: theme.colorScheme.surfaceContainerHighest,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          clockText,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontFeatures: const <FontFeature>[
+                              FontFeature.tabularFigures(),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton.icon(
+                        onPressed: canSend ? onSend : null,
+                        icon: isSaving
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.edit_note_outlined),
+                        label: const Text('기록'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

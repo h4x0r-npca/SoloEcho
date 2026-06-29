@@ -1,0 +1,42 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:soloecho/models/solo_echo_account.dart';
+import 'package:soloecho/models/workspace_info.dart';
+import 'package:soloecho/models/writing_mode.dart';
+import 'package:soloecho/ui/settings_sheet.dart';
+
+void main() {
+  testWidgets('settings sheet changes writing mode', (tester) async {
+    WritingMode? selected;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: Scaffold(
+          body: SettingsSheet(
+            account: const SoloEchoAccount(email: 'me@example.com'),
+            workspace: const WorkspaceInfo(
+              folderId: 'folder',
+              spreadsheetId: 'sheet',
+            ),
+            writingMode: WritingMode.chat,
+            lastSync: null,
+            onWritingModeChanged: (mode) async {
+              selected = mode;
+            },
+            onSignOut: () async {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('글쓰기'), findsOneWidget);
+    expect(find.text('채팅방식'), findsOneWidget);
+    expect(find.text('스레드방식'), findsOneWidget);
+
+    await tester.tap(find.text('스레드방식'));
+    await tester.pump();
+
+    expect(selected, WritingMode.thread);
+  });
+}

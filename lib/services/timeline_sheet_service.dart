@@ -13,13 +13,16 @@ class TimelineSheetService {
   final sheets.SheetsApi _sheetsApi;
   final String spreadsheetId;
 
-  Future<TimelineEntry> appendEntry(String content) async {
+  Future<TimelineEntry> appendEntry(
+    String content, {
+    DateTime? timestamp,
+  }) async {
     final trimmed = content.trim();
     if (trimmed.isEmpty) {
       throw ArgumentError.value(content, 'content', 'Content cannot be empty.');
     }
     final entry = TimelineEntry(
-      timestamp: DateTime.now(),
+      timestamp: timestamp ?? DateTime.now(),
       content: trimmed,
     );
     await _sheetsApi.spreadsheets.values.append(

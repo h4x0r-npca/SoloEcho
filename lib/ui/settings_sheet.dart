@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/solo_echo_account.dart';
 import '../models/workspace_info.dart';
+import '../models/writing_mode.dart';
 import '../utils/timestamp_formatter.dart';
 
 class SettingsSheet extends StatelessWidget {
@@ -10,13 +13,17 @@ class SettingsSheet extends StatelessWidget {
     super.key,
     required this.account,
     required this.workspace,
+    required this.writingMode,
     required this.lastSync,
+    required this.onWritingModeChanged,
     required this.onSignOut,
   });
 
   final SoloEchoAccount account;
   final WorkspaceInfo workspace;
+  final WritingMode writingMode;
   final DateTime? lastSync;
+  final Future<void> Function(WritingMode mode) onWritingModeChanged;
   final Future<void> Function() onSignOut;
 
   @override
@@ -49,6 +56,11 @@ class SettingsSheet extends StatelessWidget {
                   ? '없음'
                   : TimestampFormatter.format(lastSync!.toLocal()),
             ),
+            const SizedBox(height: 10),
+            _WritingModeControl(
+              value: writingMode,
+              onChanged: onWritingModeChanged,
+            ),
             const SizedBox(height: 18),
             OutlinedButton.icon(
               onPressed: onSignOut,
@@ -60,6 +72,64 @@ class SettingsSheet extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _WritingModeControl extends StatelessWidget {
+  const _WritingModeControl({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final WritingMode value;
+  final Future<void> Function(WritingMode mode) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: <Widget>[
+          Icon(
+            Icons.view_agenda_outlined,
+            size: 22,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 64,
+            child: Text(
+              '글쓰기',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Expanded(
+            child: SegmentedButton<WritingMode>(
+              showSelectedIcon: false,
+              segments: WritingMode.values
+                  .map(
+                    (mode) => ButtonSegment<WritingMode>(
+                      value: mode,
+                      label: Text(mode.label),
+                    ),
+                  )
+                  .toList(),
+              selected: <WritingMode>{value},
+              onSelectionChanged: (selection) {
+                if (selection.isEmpty) {
+                  return;
+                }
+                unawaited(onChanged(selection.single));
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

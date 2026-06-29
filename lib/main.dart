@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'models/solo_echo_account.dart';
 import 'models/timeline_entry.dart';
 import 'models/workspace_info.dart';
+import 'models/writing_mode.dart';
 import 'services/auth_service.dart';
 import 'services/solo_echo_repository.dart';
 import 'services/timeline_sheet_service.dart';
+import 'services/user_settings_service.dart';
 import 'ui/home_scaffold.dart';
 import 'ui/login_screen.dart';
 
@@ -23,6 +25,7 @@ class SoloEchoApp extends StatefulWidget {
 
 class _SoloEchoAppState extends State<SoloEchoApp> {
   final AuthService _authService = AuthService();
+  final UserSettingsService _settingsService = UserSettingsService();
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
 
@@ -30,6 +33,7 @@ class _SoloEchoAppState extends State<SoloEchoApp> {
   WorkspaceInfo? _workspace;
   TimelineSheetService? _timelineService;
   List<TimelineEntry> _entries = <TimelineEntry>[];
+  WritingMode _writingMode = WritingMode.chat;
   DateTime? _lastSync;
   String? _errorMessage;
   bool _isBootstrapping = true;
@@ -112,17 +116,25 @@ class _SoloEchoAppState extends State<SoloEchoApp> {
       account: account,
       workspace: workspace,
       entries: _entries,
+      writingMode: _writingMode,
       isLoadingTimeline: _isLoadingTimeline,
       isSaving: _isSaving,
       lastSync: _lastSync,
       onRefresh: _refreshTimeline,
       onSave: _saveEntry,
+      onWritingModeChanged: _changeWritingMode,
       onSignOut: _signOut,
     );
   }
 
   Future<void> _bootstrap() async {
     try {
+      final writingMode = await _settingsService.readWritingMode();
+      if (mounted) {
+        setState(() {
+          _writingMode = writingMode;
+        });
+      }
       final account = await _authService.restoreSession();
       if (account == null) {
         setState(() {
@@ -217,7 +229,29 @@ class _SoloEchoAppState extends State<SoloEchoApp> {
     }
   }
 
-  Future<void> _saveEntry(String content) async {
+  Future<void> _changeWritingMode(WritingMode mode) async {
+    if (mode == _writingMode) {
+      return;
+    }
+    final previous = _writingMode;
+    setState(() {
+      _writingMode = mode;
+    });
+    try {
+      await _settingsService.writeWritingMode(mode);
+    } catch (error) {
+      final message = _friendlyError(error);
+      if (mounted) {
+        setState(() {
+          _writingMode = previous;
+          _errorMessage = message;
+        });
+      }
+      _showSnackBar(message);
+    }
+  }
+
+  Future<void> _saveEntry(String content, DateTime timestamp) async {
     final timelineService = _timelineService;
     if (timelineService == null || content.trim().isEmpty) {
       return;
@@ -227,7 +261,10 @@ class _SoloEchoAppState extends State<SoloEchoApp> {
       _errorMessage = null;
     });
     try {
-      final entry = await timelineService.appendEntry(content);
+      final entry = await timelineService.appendEntry(
+        content,
+        timestamp: timestamp,
+      );
       setState(() {
         _entries = <TimelineEntry>[entry, ..._entries];
         _lastSync = DateTime.now();

@@ -6,7 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:soloecho/models/solo_echo_account.dart';
 import 'package:soloecho/models/timeline_entry.dart';
 import 'package:soloecho/models/workspace_info.dart';
+import 'package:soloecho/models/writing_mode.dart';
 import 'package:soloecho/ui/home_scaffold.dart';
+import 'package:soloecho/utils/timestamp_formatter.dart';
 
 void main() {
   testWidgets('home screen has chat input without view/write tabs',
@@ -52,7 +54,7 @@ void main() {
       MaterialApp(
         theme: ThemeData.dark(),
         home: _buildHome(
-          onSave: (content) async {
+          onSave: (content, timestamp) async {
             saved = content;
             await saveCompleter.future;
           },
@@ -86,7 +88,7 @@ void main() {
       MaterialApp(
         theme: ThemeData.dark(),
         home: _buildHome(
-          onSave: (content) async {
+          onSave: (content, timestamp) async {
             saved = content;
           },
         ),
@@ -114,7 +116,7 @@ void main() {
       MaterialApp(
         theme: ThemeData.dark(),
         home: _buildHome(
-          onSave: (content) async {
+          onSave: (content, timestamp) async {
             saved = content;
           },
         ),
@@ -141,7 +143,7 @@ void main() {
       MaterialApp(
         theme: ThemeData.dark(),
         home: _buildHome(
-          onSave: (content) async {
+          onSave: (content, timestamp) async {
             saved = content;
           },
         ),
@@ -181,7 +183,7 @@ void main() {
       MaterialApp(
         theme: ThemeData.dark(),
         home: _buildHome(
-          onSave: (content) async {
+          onSave: (content, timestamp) async {
             saved = content;
           },
         ),
@@ -219,6 +221,33 @@ void main() {
     await _disposeHome(tester);
   });
 
+  testWidgets('saving uses the timestamp shown in the composer',
+      (tester) async {
+    DateTime? savedAt;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: _buildHome(
+          onSave: (content, timestamp) async {
+            savedAt = timestamp;
+          },
+        ),
+      ),
+    );
+
+    final visibleClock = tester.widget<Text>(_liveClockFinder()).data;
+    await tester.enterText(find.byType(TextField), 'hello');
+    await tester.pump();
+    await tester.tap(find.byTooltip('저장'));
+    await tester.pump();
+
+    expect(savedAt, isNotNull);
+    expect(TimestampFormatter.format(savedAt!), visibleClock);
+
+    await _disposeHome(tester);
+  });
+
   testWidgets('timeline scroll is reversed so newest entries appear at bottom',
       (tester) async {
     await tester.pumpWidget(
@@ -247,24 +276,175 @@ void main() {
 
     await _disposeHome(tester);
   });
+
+  testWidgets('thread mode shows top composer with live timestamp',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: _buildHome(writingMode: WritingMode.thread),
+      ),
+    );
+
+    expect(find.text('오늘은 어떤 하루였나요?'), findsOneWidget);
+    expect(find.text('기록'), findsOneWidget);
+    expect(find.text('긴글모드'), findsNothing);
+    expect(find.byType(CircleAvatar), findsOneWidget);
+    expect(_liveClockFinder(), findsOneWidget);
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.minLines, 3);
+    expect(field.maxLines, 8);
+    expect(field.textInputAction, TextInputAction.newline);
+
+    await _disposeHome(tester);
+  });
+
+  testWidgets('thread mode shows newest entries at the top', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: _buildHome(
+          writingMode: WritingMode.thread,
+          entries: <TimelineEntry>[
+            TimelineEntry(
+              timestamp: DateTime(2026, 6, 26, 12),
+              content: 'newest',
+            ),
+            TimelineEntry(
+              timestamp: DateTime(2026, 6, 26, 11),
+              content: 'older',
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final scrollView = tester.widget<CustomScrollView>(
+      find.byType(CustomScrollView),
+    );
+    expect(scrollView.reverse, isFalse);
+    expect(find.byType(CircleAvatar), findsNWidgets(3));
+    expect(
+      tester.getTopLeft(find.text('newest')).dy,
+      lessThan(tester.getTopLeft(find.text('older')).dy),
+    );
+
+    await _disposeHome(tester);
+  });
+
+  testWidgets('thread mode uses Google profile image avatars', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: _buildHome(
+          account: const SoloEchoAccount(
+            email: 'me@example.com',
+            photoUrl: 'https://example.com/me.png',
+          ),
+          writingMode: WritingMode.thread,
+          entries: <TimelineEntry>[
+            TimelineEntry(
+              timestamp: DateTime(2026, 6, 26, 12),
+              content: 'newest',
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final avatars = tester.widgetList<CircleAvatar>(
+      find.byType(CircleAvatar),
+    );
+    expect(avatars, hasLength(2));
+    for (final avatar in avatars) {
+      expect(avatar.foregroundImage, isA<NetworkImage>());
+    }
+
+    await _disposeHome(tester);
+  });
+
+  testWidgets('thread mode newline input does not save', (tester) async {
+    String? saved;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: _buildHome(
+          writingMode: WritingMode.thread,
+          onSave: (content, timestamp) async {
+            saved = content;
+          },
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'hello\n');
+    await tester.pump();
+
+    expect(saved, isNull);
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller?.text, 'hello\n');
+
+    await _disposeHome(tester);
+  });
+
+  testWidgets('thread mode record button saves shown timestamp',
+      (tester) async {
+    String? saved;
+    DateTime? savedAt;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: _buildHome(
+          writingMode: WritingMode.thread,
+          onSave: (content, timestamp) async {
+            saved = content;
+            savedAt = timestamp;
+          },
+        ),
+      ),
+    );
+
+    final visibleClock = tester.widget<Text>(_liveClockFinder()).data;
+    await tester.enterText(find.byType(TextField), '  thread entry  ');
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '기록'));
+    await tester.pump();
+
+    expect(saved, 'thread entry');
+    expect(savedAt, isNotNull);
+    expect(TimestampFormatter.format(savedAt!), visibleClock);
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller?.text, isEmpty);
+
+    await _disposeHome(tester);
+  });
 }
 
 HomeScaffold _buildHome({
+  SoloEchoAccount account = const SoloEchoAccount(email: 'me@example.com'),
   List<TimelineEntry> entries = const <TimelineEntry>[],
-  Future<void> Function(String content)? onSave,
+  WritingMode writingMode = WritingMode.chat,
+  Future<void> Function(String content, DateTime timestamp)? onSave,
+  Future<void> Function(WritingMode mode)? onWritingModeChanged,
 }) {
   return HomeScaffold(
-    account: const SoloEchoAccount(email: 'me@example.com'),
+    account: account,
     workspace: const WorkspaceInfo(
       folderId: 'folder',
       spreadsheetId: 'sheet',
     ),
     entries: entries,
+    writingMode: writingMode,
     isLoadingTimeline: false,
     isSaving: false,
     lastSync: null,
     onRefresh: () async {},
-    onSave: onSave ?? (_) async {},
+    onSave: onSave ?? (content, timestamp) async {},
+    onWritingModeChanged: onWritingModeChanged ?? (mode) async {},
     onSignOut: () async {},
   );
 }
