@@ -20,6 +20,15 @@ class JsonFileKeyValueStore implements KeyValueStore {
             '${Platform.pathSeparator}settings.json'),
       );
     }
+    final home = Platform.environment['HOME'];
+    if (Platform.isMacOS && home != null && home.trim().isNotEmpty) {
+      return JsonFileKeyValueStore._(
+        File('$home${Platform.pathSeparator}Library'
+            '${Platform.pathSeparator}Application Support'
+            '${Platform.pathSeparator}SoloEcho'
+            '${Platform.pathSeparator}settings.json'),
+      );
+    }
     return JsonFileKeyValueStore._(
       File('${Directory.systemTemp.path}${Platform.pathSeparator}SoloEcho'
           '${Platform.pathSeparator}settings.json'),

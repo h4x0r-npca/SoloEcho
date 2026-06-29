@@ -16,6 +16,7 @@ android/.gradle/
 android/local.properties
 android/key.properties
 **/GeneratedPluginRegistrant.*
+!macos/Flutter/GeneratedPluginRegistrant.swift
 
 # Windows
 windows/flutter/ephemeral/

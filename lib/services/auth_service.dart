@@ -5,6 +5,7 @@ import 'dart:math';
 
 import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:oauth2/oauth2.dart' as oauth2;
@@ -36,7 +37,6 @@ class AuthService {
 
   final KeyValueStore _storage;
   final GoogleSignIn _googleSignIn = GoogleSignIn(
-    clientId: AppConfig.androidClientIdOrNull,
     scopes: AppConfig.apiScopes,
   );
 
@@ -57,7 +57,7 @@ class AuthService {
     if (kIsWeb) {
       return null;
     }
-    if (Platform.isWindows) {
+    if (_isDesktopOAuthPlatform) {
       return _restoreDesktopSession();
     }
     if (Platform.isAndroid) {
@@ -68,15 +68,15 @@ class AuthService {
 
   Future<SoloEchoAccount> signIn() async {
     if (kIsWeb) {
-      throw UnsupportedError('SoloEcho targets Android and Windows.');
+      throw UnsupportedError('SoloEcho targets Android, Windows, and macOS.');
     }
-    if (Platform.isWindows) {
+    if (_isDesktopOAuthPlatform) {
       return _signInWithDesktopOAuth();
     }
     if (Platform.isAndroid) {
       return _signInWithGoogleSignIn();
     }
-    throw UnsupportedError('SoloEcho targets Android and Windows.');
+    throw UnsupportedError('SoloEcho targets Android, Windows, and macOS.');
   }
 
   Future<void> signOut() async {
@@ -106,7 +106,17 @@ class AuthService {
   }
 
   Future<SoloEchoAccount> _signInWithGoogleSignIn() async {
-    final account = await _googleSignIn.signIn();
+    GoogleSignInAccount? account;
+    try {
+      account = await _googleSignIn.signIn();
+    } on PlatformException catch (error) {
+      if (_isAndroidDeveloperConfigurationError(error)) {
+        throw const AppConfigurationException(
+          'Android Google 로그인 설정이 맞지 않습니다. Google Cloud에서 Android OAuth client를 만들어 주세요. Package name: com.soloecho.app / SHA-1: 86:E4:02:A7:AF:49:98:7D:16:D1:3B:A5:07:EC:E9:D9:AC:19:9F:6F',
+        );
+      }
+      rethrow;
+    }
     if (account == null) {
       throw StateError('Google sign-in was cancelled.');
     }
@@ -183,7 +193,7 @@ class AuthService {
     try {
       final baseAuthorizationUri = grant.getAuthorizationUrl(
         redirectUri,
-        scopes: AppConfig.windowsOAuthScopes,
+        scopes: AppConfig.desktopOAuthScopes,
         state: state,
       );
       final authorizationUri = baseAuthorizationUri.replace(
@@ -262,6 +272,18 @@ class AuthService {
       key: _desktopCredentialsKey,
       value: credentials.toJson(),
     );
+  }
+
+  bool get _isDesktopOAuthPlatform => Platform.isWindows || Platform.isMacOS;
+
+  bool _isAndroidDeveloperConfigurationError(PlatformException error) {
+    if (error.code != GoogleSignIn.kSignInFailedError) {
+      return false;
+    }
+    final message = error.message ?? error.toString();
+    return message.contains('ApiException: 10') ||
+        message.contains('Api 10') ||
+        message.contains('Api10');
   }
 
   Future<void> _storeAccount(SoloEchoAccount account) async {

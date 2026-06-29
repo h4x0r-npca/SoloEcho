@@ -15,6 +15,9 @@ migration:
     - platform: windows
       create_revision: manual
       base_revision: manual
+    - platform: macos
+      create_revision: manual
+      base_revision: manual
 
   unmanaged_files:
     - 'lib/main.dart'

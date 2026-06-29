@@ -6,9 +6,6 @@ class AppConfig {
   static const spreadsheetName = 'SoloEcho Timeline';
   static const logSheetName = 'Log';
 
-  static const androidClientId = String.fromEnvironment(
-    'SOLOECHO_ANDROID_CLIENT_ID',
-  );
   static const desktopClientId = String.fromEnvironment(
     'SOLOECHO_DESKTOP_CLIENT_ID',
   );
@@ -26,14 +23,10 @@ class AppConfig {
     'https://www.googleapis.com/auth/drive.file',
   ];
 
-  static const windowsOAuthScopes = <String>[
+  static const desktopOAuthScopes = <String>[
     ...authScopes,
     ...apiScopes,
   ];
-
-  static String? get androidClientIdOrNull {
-    return androidClientId.trim().isEmpty ? null : androidClientId.trim();
-  }
 
   static String get requiredDesktopClientId {
     final value = desktopClientId.trim();
