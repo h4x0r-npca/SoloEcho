@@ -72,6 +72,7 @@ class _SoloEchoAppState extends State<SoloEchoApp> {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
+      fontFamily: 'Pretendard',
       colorScheme: colorScheme,
       scaffoldBackgroundColor: const Color(0xFF101112),
       appBarTheme: const AppBarTheme(
@@ -164,6 +165,13 @@ class _SoloEchoAppState extends State<SoloEchoApp> {
     try {
       final account = await _authService.signIn();
       await _openWorkspace(account);
+    } on AuthCancelledException {
+      if (mounted) {
+        setState(() {
+          _errorMessage = null;
+        });
+      }
+      _showSnackBar('로그인이 취소되었습니다');
     } catch (error) {
       setState(() {
         _errorMessage = _friendlyError(error);
@@ -210,11 +218,19 @@ class _SoloEchoAppState extends State<SoloEchoApp> {
       _errorMessage = null;
     });
     try {
-      final entries = await timelineService.readEntriesNewestFirst();
+      final entries = await _runWithAuthRecovery(() {
+        final currentTimelineService = _timelineService;
+        if (currentTimelineService == null) {
+          throw StateError('Timeline is not ready.');
+        }
+        return currentTimelineService.readEntriesNewestFirst();
+      });
       setState(() {
         _entries = entries;
         _lastSync = DateTime.now();
       });
+    } on AuthExpiredException {
+      // _expireSession already reset state and informed the user.
     } catch (error) {
       setState(() {
         _errorMessage = _friendlyError(error);
@@ -261,15 +277,23 @@ class _SoloEchoAppState extends State<SoloEchoApp> {
       _errorMessage = null;
     });
     try {
-      final entry = await timelineService.appendEntry(
-        content,
-        timestamp: timestamp,
-      );
+      final entry = await _runWithAuthRecovery(() {
+        final currentTimelineService = _timelineService;
+        if (currentTimelineService == null) {
+          throw StateError('Timeline is not ready.');
+        }
+        return currentTimelineService.appendEntry(
+          content,
+          timestamp: timestamp,
+        );
+      });
       setState(() {
         _entries = <TimelineEntry>[entry, ..._entries];
         _lastSync = DateTime.now();
       });
       _showSnackBar('저장되었습니다');
+    } on AuthExpiredException {
+      rethrow;
     } catch (error) {
       setState(() {
         _errorMessage = _friendlyError(error);
@@ -310,8 +334,90 @@ class _SoloEchoAppState extends State<SoloEchoApp> {
     );
   }
 
+  Future<T> _runWithAuthRecovery<T>(Future<T> Function() request) async {
+    try {
+      return await request();
+    } catch (error) {
+      if (!AuthService.isRecoverableAuthError(error)) {
+        rethrow;
+      }
+      final recovered = await _refreshAuthorization();
+      if (!recovered) {
+        await _expireSession();
+        throw const AuthExpiredException();
+      }
+    }
+
+    try {
+      return await request();
+    } catch (error) {
+      if (AuthService.isRecoverableAuthError(error)) {
+        await _expireSession();
+        throw const AuthExpiredException();
+      }
+      rethrow;
+    }
+  }
+
+  Future<bool> _refreshAuthorization() async {
+    final workspace = _workspace;
+    if (workspace == null) {
+      return false;
+    }
+
+    final refreshed = await _authService.refreshAuthorization();
+    if (!refreshed || !mounted) {
+      return false;
+    }
+
+    setState(() {
+      _account = _authService.account ?? _account;
+      _timelineService = TimelineSheetService(
+        client: _authService.authorizedClient,
+        spreadsheetId: workspace.spreadsheetId,
+      );
+    });
+    return true;
+  }
+
+  Future<void> _expireSession() async {
+    try {
+      await _authService.signOut();
+    } catch (_) {
+      // The session is already unusable; local state still needs to reset.
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _account = null;
+      _workspace = null;
+      _timelineService = null;
+      _entries = <TimelineEntry>[];
+      _lastSync = null;
+      _errorMessage = null;
+      _isLoadingTimeline = false;
+      _isSaving = false;
+    });
+    _showSnackBar('세션이 만료되었습니다. 다시 로그인해 주세요');
+  }
+
   String _friendlyError(Object error) {
+    if (error is AuthCancelledException) {
+      return '로그인이 취소되었습니다';
+    }
+    if (error is AuthExpiredException ||
+        AuthService.isRecoverableAuthError(error)) {
+      return '세션이 만료되었습니다. 다시 로그인해 주세요';
+    }
+
     final text = error.toString();
+    if (text.contains('Google sign-in was cancelled')) {
+      return '로그인이 취소되었습니다';
+    }
+    if (text.contains('Google API authorization is required')) {
+      return 'Google Drive 접근 권한이 필요합니다. 다시 로그인해 주세요';
+    }
     if (text.contains('SocketException') ||
         text.contains('Failed host lookup') ||
         text.contains('Network is unreachable')) {
@@ -320,6 +426,9 @@ class _SoloEchoAppState extends State<SoloEchoApp> {
     if (text.contains('timed out')) {
       return '로그인 시간이 초과되었습니다';
     }
-    return text.replaceFirst('Exception: ', '');
+    return text
+        .replaceFirst('Exception: ', '')
+        .replaceFirst('Bad state: ', '')
+        .replaceFirst('StateError: ', '');
   }
 }

@@ -80,6 +80,31 @@ void main() {
     await _disposeHome(tester);
   });
 
+  testWidgets('failed save keeps the draft and does not leak framework errors',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: _buildHome(
+          onSave: (content, timestamp) async {
+            throw StateError('save failed');
+          },
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), '  keep me  ');
+    await tester.pump();
+    await tester.tap(find.byTooltip('저장'));
+    await tester.pump();
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller?.text, '  keep me  ');
+    expect(tester.takeException(), isNull);
+
+    await _disposeHome(tester);
+  });
+
   testWidgets('enter sends short input and clears after save succeeds',
       (tester) async {
     String? saved;

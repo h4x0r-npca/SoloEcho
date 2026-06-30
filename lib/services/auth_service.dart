@@ -53,6 +53,22 @@ class AuthService {
     return client;
   }
 
+  static bool isRecoverableAuthError(Object error) {
+    if (error is AuthExpiredException ||
+        error is oauth2.AuthorizationException ||
+        error is oauth2.ExpirationException) {
+      return true;
+    }
+
+    final text = error.toString().toLowerCase();
+    return text.contains('invalid_token') ||
+        text.contains('access was denied') &&
+            text.contains('www-authenticate') ||
+        text.contains('oauth2 credentials have expired') ||
+        text.contains('google api authorization is required') ||
+        text.contains('401') && text.contains('unauthorized');
+  }
+
   Future<SoloEchoAccount?> restoreSession() async {
     if (kIsWeb) {
       return null;
@@ -92,6 +108,19 @@ class AuthService {
     }
   }
 
+  Future<bool> refreshAuthorization() async {
+    if (kIsWeb) {
+      return false;
+    }
+    if (_isDesktopOAuthPlatform) {
+      return _refreshDesktopAuthorization();
+    }
+    if (Platform.isAndroid) {
+      return _refreshAndroidAuthorization();
+    }
+    return false;
+  }
+
   void dispose() {
     _authorizedClient?.close();
   }
@@ -118,7 +147,7 @@ class AuthService {
       rethrow;
     }
     if (account == null) {
-      throw StateError('Google sign-in was cancelled.');
+      throw const AuthCancelledException();
     }
     return _finishAndroidSignIn(account);
   }
@@ -226,6 +255,19 @@ class AuthService {
         throw StateError('Invalid OAuth response state.');
       }
 
+      if (request.uri.queryParameters.containsKey('error')) {
+        request.response.statusCode = HttpStatus.ok;
+        request.response.headers.contentType = ContentType.html;
+        request.response.write(
+          '<!doctype html><title>SoloEcho</title>'
+          '<body style="font-family:sans-serif;padding:32px">'
+          'SoloEcho login was cancelled. You can close this window.'
+          '</body>',
+        );
+        await request.response.close();
+        throw const AuthCancelledException();
+      }
+
       request.response.headers.contentType = ContentType.html;
       request.response.write(
         '<!doctype html><title>SoloEcho</title>'
@@ -272,6 +314,60 @@ class AuthService {
       key: _desktopCredentialsKey,
       value: credentials.toJson(),
     );
+  }
+
+  Future<bool> _refreshDesktopAuthorization() async {
+    final client = _authorizedClient;
+    if (client is oauth2.Client) {
+      try {
+        await client.refreshCredentials();
+        await _storeDesktopCredentials(client.credentials);
+        return true;
+      } on oauth2.AuthorizationException {
+        await _clearExpiredAuthorization();
+        return false;
+      } on oauth2.ExpirationException {
+        await _clearExpiredAuthorization();
+        return false;
+      } on StateError {
+        await _clearExpiredAuthorization();
+        return false;
+      }
+    }
+
+    return await _restoreDesktopSession() != null;
+  }
+
+  Future<bool> _refreshAndroidAuthorization() async {
+    try {
+      final account = await _googleSignIn.signInSilently(
+        reAuthenticate: true,
+      );
+      if (account == null) {
+        await _clearExpiredAuthorization();
+        return false;
+      }
+      await _finishAndroidSignIn(account);
+      return true;
+    } on PlatformException catch (error) {
+      if (_isAndroidDeveloperConfigurationError(error)) {
+        throw const AppConfigurationException(
+          'Android Google 로그인 설정이 맞지 않습니다. Google Cloud에서 Android OAuth client를 만들어 주세요. Package name: com.soloecho.app / SHA-1: 86:E4:02:A7:AF:49:98:7D:16:D1:3B:A5:07:EC:E9:D9:AC:19:9F:6F',
+        );
+      }
+      await _clearExpiredAuthorization();
+      return false;
+    }
+  }
+
+  Future<void> _clearExpiredAuthorization() async {
+    _authorizedClient?.close();
+    _authorizedClient = null;
+    _account = null;
+    await _storage.delete(key: _desktopCredentialsKey);
+    await _storage.delete(key: _accountEmailKey);
+    await _storage.delete(key: _accountNameKey);
+    await _storage.delete(key: _accountPhotoKey);
   }
 
   bool get _isDesktopOAuthPlatform => Platform.isWindows || Platform.isMacOS;
@@ -322,4 +418,18 @@ class AuthService {
       (_) => chars[random.nextInt(chars.length)],
     ).join();
   }
+}
+
+class AuthCancelledException implements Exception {
+  const AuthCancelledException();
+
+  @override
+  String toString() => 'Google sign-in was cancelled.';
+}
+
+class AuthExpiredException implements Exception {
+  const AuthExpiredException();
+
+  @override
+  String toString() => 'Google authorization has expired.';
 }

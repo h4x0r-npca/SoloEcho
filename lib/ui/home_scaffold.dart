@@ -196,13 +196,19 @@ class _HomeScaffoldState extends State<HomeScaffold> {
       _isSending = true;
     });
 
+    var didSave = false;
     try {
       await widget.onSave(content, _clockTimestamp);
-      if (mounted) {
-        _controller.clear();
-        _lastInputText = '';
-      }
+      didSave = true;
+    } catch (_) {
+      // The parent shows the error; keep the draft in place.
     } finally {
+      if (mounted) {
+        if (didSave) {
+          _controller.clear();
+          _lastInputText = '';
+        }
+      }
       if (mounted) {
         setState(() {
           _isSending = false;
