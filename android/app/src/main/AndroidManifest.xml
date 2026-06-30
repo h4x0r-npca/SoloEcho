@@ -3,8 +3,10 @@
 
     <application
         android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
         android:label="SoloEcho"
-        android:name="${applicationName}">
+        android:name="${applicationName}"
+        android:roundIcon="@mipmap/ic_launcher_round">
         <activity
             android:name=".MainActivity"
             android:exported="true"

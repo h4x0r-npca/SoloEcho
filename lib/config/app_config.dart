@@ -32,7 +32,7 @@ class AppConfig {
     final value = desktopClientId.trim();
     if (value.isEmpty) {
       throw const AppConfigurationException(
-        'SOLOECHO_DESKTOP_CLIENT_ID is required for Windows OAuth.',
+        'SOLOECHO_DESKTOP_CLIENT_ID is required for desktop OAuth.',
       );
     }
     return value;

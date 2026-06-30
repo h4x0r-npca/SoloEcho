@@ -24,6 +24,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/images/solo_echo_logo_transparent.png
   fonts:
     - family: Pretendard
       fonts:

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'models/solo_echo_account.dart';
@@ -23,7 +25,9 @@ class SoloEchoApp extends StatefulWidget {
   State<SoloEchoApp> createState() => _SoloEchoAppState();
 }
 
-class _SoloEchoAppState extends State<SoloEchoApp> {
+class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
+  static const _autoRefreshInterval = Duration(seconds: 20);
+
   final AuthService _authService = AuthService();
   final UserSettingsService _settingsService = UserSettingsService();
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
@@ -40,17 +44,33 @@ class _SoloEchoAppState extends State<SoloEchoApp> {
   bool _isSigningIn = false;
   bool _isLoadingTimeline = false;
   bool _isSaving = false;
+  bool _isAutoRefreshing = false;
+  bool _isAppInForeground = true;
+  Timer? _autoRefreshTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _bootstrap();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _stopAutoRefreshTimer();
     _authService.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final wasInForeground = _isAppInForeground;
+    _isAppInForeground = state == AppLifecycleState.resumed;
+    if (!wasInForeground && _isAppInForeground) {
+      _startAutoRefreshTimer();
+      unawaited(_refreshTimelineSilently());
+    }
   }
 
   @override
@@ -206,6 +226,7 @@ class _SoloEchoAppState extends State<SoloEchoApp> {
       _isLoadingTimeline = false;
       _errorMessage = null;
     });
+    _startAutoRefreshTimer();
   }
 
   Future<void> _refreshTimeline() async {
@@ -310,6 +331,7 @@ class _SoloEchoAppState extends State<SoloEchoApp> {
   }
 
   Future<void> _signOut() async {
+    _stopAutoRefreshTimer();
     final repository =
         SoloEchoRepository(client: _authService.authorizedClient);
     await repository.clear();
@@ -322,6 +344,58 @@ class _SoloEchoAppState extends State<SoloEchoApp> {
       _lastSync = null;
       _errorMessage = null;
     });
+  }
+
+  void _startAutoRefreshTimer() {
+    _autoRefreshTimer?.cancel();
+    if (_timelineService == null) {
+      return;
+    }
+    _autoRefreshTimer = Timer.periodic(_autoRefreshInterval, (_) {
+      unawaited(_refreshTimelineSilently());
+    });
+  }
+
+  void _stopAutoRefreshTimer() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = null;
+    _isAutoRefreshing = false;
+  }
+
+  Future<void> _refreshTimelineSilently() async {
+    final spreadsheetId = _workspace?.spreadsheetId;
+    if (!_isAppInForeground ||
+        spreadsheetId == null ||
+        _timelineService == null ||
+        _isLoadingTimeline ||
+        _isSaving ||
+        _isAutoRefreshing) {
+      return;
+    }
+
+    _isAutoRefreshing = true;
+    try {
+      final entries = await _runWithAuthRecovery(() {
+        final currentTimelineService = _timelineService;
+        if (currentTimelineService == null) {
+          throw StateError('Timeline is not ready.');
+        }
+        return currentTimelineService.readEntriesNewestFirst();
+      });
+      if (!mounted || _workspace?.spreadsheetId != spreadsheetId) {
+        return;
+      }
+      setState(() {
+        _entries = entries;
+        _lastSync = DateTime.now();
+      });
+    } on AuthExpiredException {
+      // _expireSession already reset state and informed the user.
+    } catch (_) {
+      // Automatic refresh should stay quiet for transient network/API errors.
+    } finally {
+      _isAutoRefreshing = false;
+    }
   }
 
   void _showSnackBar(String message) {
@@ -381,6 +455,7 @@ class _SoloEchoAppState extends State<SoloEchoApp> {
   }
 
   Future<void> _expireSession() async {
+    _stopAutoRefreshTimer();
     try {
       await _authService.signOut();
     } catch (_) {

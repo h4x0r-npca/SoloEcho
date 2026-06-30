@@ -92,7 +92,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('SoloEcho'),
+        title: const _SoloEchoTitle(),
         actions: <Widget>[
           IconButton(
             tooltip: '설정',
@@ -169,6 +169,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   void _openSettings(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
       builder: (context) {
         return SettingsSheet(
@@ -287,6 +288,28 @@ class _HomeScaffoldState extends State<HomeScaffold> {
 
   static int _countNewLines(String value) {
     return '\n'.allMatches(value).length;
+  }
+}
+
+class _SoloEchoTitle extends StatelessWidget {
+  const _SoloEchoTitle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Image.asset(
+          'assets/images/solo_echo_logo_transparent.png',
+          width: 26,
+          height: 26,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.high,
+        ),
+        const SizedBox(width: 8),
+        const Text('SoloEcho'),
+      ],
+    );
   }
 }
 

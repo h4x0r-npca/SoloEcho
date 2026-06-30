@@ -39,4 +39,34 @@ void main() {
 
     expect(selected, WritingMode.thread);
   });
+
+  testWidgets('settings sheet scrolls in short landscape layouts',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(640, 300));
+    addTearDown(() async {
+      await tester.binding.setSurfaceSize(null);
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: Scaffold(
+          body: SettingsSheet(
+            account: const SoloEchoAccount(email: 'me@example.com'),
+            workspace: const WorkspaceInfo(
+              folderId: 'folder',
+              spreadsheetId: 'sheet',
+            ),
+            writingMode: WritingMode.chat,
+            lastSync: DateTime(2026, 6, 30, 18, 0),
+            onWritingModeChanged: (_) async {},
+            onSignOut: () async {},
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('로그아웃'), findsOneWidget);
+  });
 }

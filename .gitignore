@@ -21,6 +21,13 @@ android/key.properties
 # Windows
 windows/flutter/ephemeral/
 
+# Distribution artifacts
+dist/
+
+# Local script secrets
+scripts/*.local.env
+ios/Flutter/GoogleSignIn.local.xcconfig
+
 # OS
 .DS_Store
 Thumbs.db

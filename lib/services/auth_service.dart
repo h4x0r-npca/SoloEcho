@@ -34,6 +34,12 @@ class AuthService {
   static const _accountEmailKey = 'account_email';
   static const _accountNameKey = 'account_name';
   static const _accountPhotoKey = 'account_photo';
+  static const _supportedPlatformsMessage =
+      'SoloEcho targets Android, iOS, Windows, and macOS.';
+  static const _androidConfigurationMessage =
+      'Android Google 로그인 설정이 맞지 않습니다. Google Cloud에서 Android OAuth client를 만들어 주세요. Package name: com.soloecho.app / SHA-1: 86:E4:02:A7:AF:49:98:7D:16:D1:3B:A5:07:EC:E9:D9:AC:19:9F:6F';
+  static const _iosConfigurationMessage =
+      'iOS Google 로그인 설정이 맞지 않습니다. Google Cloud에서 bundle id com.soloecho.app용 iOS OAuth client를 만들고 ios/Flutter/GoogleSignIn.local.xcconfig에 GOOGLE_IOS_CLIENT_ID와 GOOGLE_IOS_REVERSED_CLIENT_ID를 설정해 주세요.';
 
   final KeyValueStore _storage;
   final GoogleSignIn _googleSignIn = GoogleSignIn(
@@ -76,23 +82,23 @@ class AuthService {
     if (_isDesktopOAuthPlatform) {
       return _restoreDesktopSession();
     }
-    if (Platform.isAndroid) {
-      return _restoreAndroidSession();
+    if (_isGoogleSignInPlatform) {
+      return _restoreGoogleSignInSession();
     }
     return null;
   }
 
   Future<SoloEchoAccount> signIn() async {
     if (kIsWeb) {
-      throw UnsupportedError('SoloEcho targets Android, Windows, and macOS.');
+      throw UnsupportedError(_supportedPlatformsMessage);
     }
     if (_isDesktopOAuthPlatform) {
       return _signInWithDesktopOAuth();
     }
-    if (Platform.isAndroid) {
+    if (_isGoogleSignInPlatform) {
       return _signInWithGoogleSignIn();
     }
-    throw UnsupportedError('SoloEcho targets Android, Windows, and macOS.');
+    throw UnsupportedError(_supportedPlatformsMessage);
   }
 
   Future<void> signOut() async {
@@ -103,7 +109,7 @@ class AuthService {
     await _storage.delete(key: _accountEmailKey);
     await _storage.delete(key: _accountNameKey);
     await _storage.delete(key: _accountPhotoKey);
-    if (!kIsWeb && Platform.isAndroid) {
+    if (!kIsWeb && _isGoogleSignInPlatform) {
       await _googleSignIn.signOut();
     }
   }
@@ -115,8 +121,8 @@ class AuthService {
     if (_isDesktopOAuthPlatform) {
       return _refreshDesktopAuthorization();
     }
-    if (Platform.isAndroid) {
-      return _refreshAndroidAuthorization();
+    if (_isGoogleSignInPlatform) {
+      return _refreshGoogleSignInAuthorization();
     }
     return false;
   }
@@ -125,13 +131,13 @@ class AuthService {
     _authorizedClient?.close();
   }
 
-  Future<SoloEchoAccount?> _restoreAndroidSession() async {
+  Future<SoloEchoAccount?> _restoreGoogleSignInSession() async {
     final account = await _googleSignIn.signInSilently();
     if (account == null) {
       _account = await _readStoredAccount();
       return null;
     }
-    return _finishAndroidSignIn(account);
+    return _finishGoogleSignIn(account);
   }
 
   Future<SoloEchoAccount> _signInWithGoogleSignIn() async {
@@ -139,20 +145,19 @@ class AuthService {
     try {
       account = await _googleSignIn.signIn();
     } on PlatformException catch (error) {
-      if (_isAndroidDeveloperConfigurationError(error)) {
-        throw const AppConfigurationException(
-          'Android Google 로그인 설정이 맞지 않습니다. Google Cloud에서 Android OAuth client를 만들어 주세요. Package name: com.soloecho.app / SHA-1: 86:E4:02:A7:AF:49:98:7D:16:D1:3B:A5:07:EC:E9:D9:AC:19:9F:6F',
-        );
+      final configurationError = _googleSignInConfigurationError(error);
+      if (configurationError != null) {
+        throw configurationError;
       }
       rethrow;
     }
     if (account == null) {
       throw const AuthCancelledException();
     }
-    return _finishAndroidSignIn(account);
+    return _finishGoogleSignIn(account);
   }
 
-  Future<SoloEchoAccount> _finishAndroidSignIn(
+  Future<SoloEchoAccount> _finishGoogleSignIn(
     GoogleSignInAccount googleAccount,
   ) async {
     final client = await _googleSignIn.authenticatedClient();
@@ -338,7 +343,7 @@ class AuthService {
     return await _restoreDesktopSession() != null;
   }
 
-  Future<bool> _refreshAndroidAuthorization() async {
+  Future<bool> _refreshGoogleSignInAuthorization() async {
     try {
       final account = await _googleSignIn.signInSilently(
         reAuthenticate: true,
@@ -347,13 +352,12 @@ class AuthService {
         await _clearExpiredAuthorization();
         return false;
       }
-      await _finishAndroidSignIn(account);
+      await _finishGoogleSignIn(account);
       return true;
     } on PlatformException catch (error) {
-      if (_isAndroidDeveloperConfigurationError(error)) {
-        throw const AppConfigurationException(
-          'Android Google 로그인 설정이 맞지 않습니다. Google Cloud에서 Android OAuth client를 만들어 주세요. Package name: com.soloecho.app / SHA-1: 86:E4:02:A7:AF:49:98:7D:16:D1:3B:A5:07:EC:E9:D9:AC:19:9F:6F',
-        );
+      final configurationError = _googleSignInConfigurationError(error);
+      if (configurationError != null) {
+        throw configurationError;
       }
       await _clearExpiredAuthorization();
       return false;
@@ -372,14 +376,41 @@ class AuthService {
 
   bool get _isDesktopOAuthPlatform => Platform.isWindows || Platform.isMacOS;
 
+  bool get _isGoogleSignInPlatform => Platform.isAndroid || Platform.isIOS;
+
+  AppConfigurationException? _googleSignInConfigurationError(
+    PlatformException error,
+  ) {
+    if (_isAndroidDeveloperConfigurationError(error)) {
+      return const AppConfigurationException(_androidConfigurationMessage);
+    }
+    if (_isIOSDeveloperConfigurationError(error)) {
+      return const AppConfigurationException(_iosConfigurationMessage);
+    }
+    return null;
+  }
+
   bool _isAndroidDeveloperConfigurationError(PlatformException error) {
-    if (error.code != GoogleSignIn.kSignInFailedError) {
+    if (!Platform.isAndroid || error.code != GoogleSignIn.kSignInFailedError) {
       return false;
     }
     final message = error.message ?? error.toString();
     return message.contains('ApiException: 10') ||
         message.contains('Api 10') ||
         message.contains('Api10');
+  }
+
+  bool _isIOSDeveloperConfigurationError(PlatformException error) {
+    if (!Platform.isIOS || error.code != GoogleSignIn.kSignInFailedError) {
+      return false;
+    }
+    final message = (error.message ?? error.toString()).toLowerCase();
+    return message.contains('gidclientid') ||
+        message.contains('googleclientid') ||
+        message.contains('url scheme') ||
+        message.contains('reversed_client_id') ||
+        message.contains('googleservice-info') ||
+        message.contains('oauth client');
   }
 
   Future<void> _storeAccount(SoloEchoAccount account) async {

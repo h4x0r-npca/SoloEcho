@@ -2,3 +2,5 @@
 #include "winres.h"
 
 LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+IDI_APP_ICON ICON "resources\\app_icon.ico"

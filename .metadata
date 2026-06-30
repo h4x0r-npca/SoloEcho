@@ -18,7 +18,11 @@ migration:
     - platform: macos
       create_revision: manual
       base_revision: manual
+    - platform: ios
+      create_revision: ad70ec4617166f1c38e5d2bfd388af71fda14f06
+      base_revision: ad70ec4617166f1c38e5d2bfd388af71fda14f06
 
   unmanaged_files:
     - 'lib/main.dart'
     - 'android/app/src/main/AndroidManifest.xml'
+    - 'ios/Runner.xcodeproj/project.pbxproj'

@@ -1,0 +1,8 @@
+GOOGLE_IOS_CLIENT_ID =
+GOOGLE_IOS_REVERSED_CLIENT_ID =
+
+// Keep personal OAuth values in GoogleSignIn.local.xcconfig.
+// Example:
+// GOOGLE_IOS_CLIENT_ID = 000000000000-example.apps.googleusercontent.com
+// GOOGLE_IOS_REVERSED_CLIENT_ID = com.googleusercontent.apps.000000000000-example
+#include? "GoogleSignIn.local.xcconfig"
