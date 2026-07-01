@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../models/app_theme_mode.dart';
 import '../models/solo_echo_account.dart';
 import '../models/workspace_info.dart';
 import '../models/writing_mode.dart';
 import '../utils/timestamp_formatter.dart';
+import 'app_theme.dart';
 
 class SettingsSheet extends StatelessWidget {
   const SettingsSheet({
@@ -14,21 +16,26 @@ class SettingsSheet extends StatelessWidget {
     required this.account,
     required this.workspace,
     required this.writingMode,
+    required this.themeMode,
     required this.lastSync,
     required this.onWritingModeChanged,
+    required this.onThemeModeChanged,
     required this.onSignOut,
   });
 
   final SoloEchoAccount account;
   final WorkspaceInfo workspace;
   final WritingMode writingMode;
+  final AppThemeMode themeMode;
   final DateTime? lastSync;
   final Future<void> Function(WritingMode mode) onWritingModeChanged;
+  final Future<void> Function(AppThemeMode mode) onThemeModeChanged;
   final Future<void> Function() onSignOut;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colors = SoloEchoColors.of(context);
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
@@ -37,9 +44,19 @@ class SettingsSheet extends StatelessWidget {
           children: <Widget>[
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(child: Text(account.initials)),
-              title: Text(account.displayName ?? account.email),
-              subtitle: Text(account.email),
+              leading: CircleAvatar(
+                backgroundColor: colors.point,
+                foregroundColor: colors.pointText,
+                child: Text(account.initials),
+              ),
+              title: Text(
+                account.displayName ?? account.email,
+                style: TextStyle(color: colors.textPrimary),
+              ),
+              subtitle: Text(
+                account.email,
+                style: TextStyle(color: colors.textSecondary),
+              ),
             ),
             const Divider(),
             _InfoRow(
@@ -59,6 +76,10 @@ class SettingsSheet extends StatelessWidget {
             _WritingModeControl(
               value: writingMode,
               onChanged: onWritingModeChanged,
+            ),
+            _ThemeModeControl(
+              value: themeMode,
+              onChanged: onThemeModeChanged,
             ),
             const SizedBox(height: 18),
             OutlinedButton.icon(
@@ -88,6 +109,7 @@ class _WritingModeControl extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colors = SoloEchoColors.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -96,7 +118,7 @@ class _WritingModeControl extends StatelessWidget {
           Icon(
             Icons.view_agenda_outlined,
             size: 22,
-            color: theme.colorScheme.onSurfaceVariant,
+            color: colors.textSecondary,
           ),
           const SizedBox(width: 12),
           SizedBox(
@@ -104,7 +126,7 @@ class _WritingModeControl extends StatelessWidget {
             child: Text(
               '글쓰기',
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+                color: colors.textSecondary,
               ),
             ),
           ),
@@ -120,6 +142,65 @@ class _WritingModeControl extends StatelessWidget {
                   )
                   .toList(),
               selected: <WritingMode>{value},
+              onSelectionChanged: (selection) {
+                if (selection.isEmpty) {
+                  return;
+                }
+                unawaited(onChanged(selection.single));
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ThemeModeControl extends StatelessWidget {
+  const _ThemeModeControl({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final AppThemeMode value;
+  final Future<void> Function(AppThemeMode mode) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = SoloEchoColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: <Widget>[
+          Icon(
+            Icons.contrast_outlined,
+            size: 22,
+            color: colors.textSecondary,
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 64,
+            child: Text(
+              '화면',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colors.textSecondary,
+              ),
+            ),
+          ),
+          Expanded(
+            child: SegmentedButton<AppThemeMode>(
+              showSelectedIcon: false,
+              segments: AppThemeMode.values
+                  .map(
+                    (mode) => ButtonSegment<AppThemeMode>(
+                      value: mode,
+                      label: Text(mode.label),
+                    ),
+                  )
+                  .toList(),
+              selected: <AppThemeMode>{value},
               onSelectionChanged: (selection) {
                 if (selection.isEmpty) {
                   return;
@@ -150,26 +231,29 @@ class _InfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colors = SoloEchoColors.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Icon(icon, size: 22, color: theme.colorScheme.onSurfaceVariant),
+          Icon(icon, size: 22, color: colors.textSecondary),
           const SizedBox(width: 12),
           SizedBox(
             width: 64,
             child: Text(
               label,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+                color: colors.textSecondary,
               ),
             ),
           ),
           Expanded(
             child: SelectableText(
               value,
-              style: theme.textTheme.bodyMedium,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colors.textPrimary,
+              ),
             ),
           ),
           if (link != null)

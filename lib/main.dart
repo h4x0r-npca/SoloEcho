@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'models/app_theme_mode.dart';
 import 'models/solo_echo_account.dart';
 import 'models/timeline_entry.dart';
 import 'models/workspace_info.dart';
@@ -10,6 +11,7 @@ import 'services/auth_service.dart';
 import 'services/solo_echo_repository.dart';
 import 'services/timeline_sheet_service.dart';
 import 'services/user_settings_service.dart';
+import 'ui/app_theme.dart';
 import 'ui/home_scaffold.dart';
 import 'ui/login_screen.dart';
 
@@ -38,6 +40,7 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
   TimelineSheetService? _timelineService;
   List<TimelineEntry> _entries = <TimelineEntry>[];
   WritingMode _writingMode = WritingMode.chat;
+  AppThemeMode _themeMode = AppThemeMode.dark;
   DateTime? _lastSync;
   String? _errorMessage;
   bool _isBootstrapping = true;
@@ -79,40 +82,13 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
       title: 'SoloEcho',
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: _scaffoldMessengerKey,
-      theme: _buildTheme(),
+      theme: SoloEchoTheme.lightTheme,
+      darkTheme: SoloEchoTheme.darkTheme,
+      themeMode: switch (_themeMode) {
+        AppThemeMode.dark => ThemeMode.dark,
+        AppThemeMode.light => ThemeMode.light,
+      },
       home: _buildHome(),
-    );
-  }
-
-  ThemeData _buildTheme() {
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF6ED6A0),
-      brightness: Brightness.dark,
-    );
-    return ThemeData(
-      useMaterial3: true,
-      brightness: Brightness.dark,
-      fontFamily: 'Pretendard',
-      colorScheme: colorScheme,
-      scaffoldBackgroundColor: const Color(0xFF101112),
-      appBarTheme: const AppBarTheme(
-        centerTitle: false,
-        backgroundColor: Color(0xFF101112),
-      ),
-      navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: const Color(0xFF161819),
-        indicatorColor: colorScheme.primaryContainer,
-      ),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      ),
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      ),
     );
   }
 
@@ -138,12 +114,14 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
       workspace: workspace,
       entries: _entries,
       writingMode: _writingMode,
+      themeMode: _themeMode,
       isLoadingTimeline: _isLoadingTimeline,
       isSaving: _isSaving,
       lastSync: _lastSync,
       onRefresh: _refreshTimeline,
       onSave: _saveEntry,
       onWritingModeChanged: _changeWritingMode,
+      onThemeModeChanged: _changeThemeMode,
       onSignOut: _signOut,
     );
   }
@@ -151,9 +129,11 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
   Future<void> _bootstrap() async {
     try {
       final writingMode = await _settingsService.readWritingMode();
+      final themeMode = await _settingsService.readThemeMode();
       if (mounted) {
         setState(() {
           _writingMode = writingMode;
+          _themeMode = themeMode;
         });
       }
       final account = await _authService.restoreSession();
@@ -281,6 +261,28 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
       if (mounted) {
         setState(() {
           _writingMode = previous;
+          _errorMessage = message;
+        });
+      }
+      _showSnackBar(message);
+    }
+  }
+
+  Future<void> _changeThemeMode(AppThemeMode mode) async {
+    if (mode == _themeMode) {
+      return;
+    }
+    final previous = _themeMode;
+    setState(() {
+      _themeMode = mode;
+    });
+    try {
+      await _settingsService.writeThemeMode(mode);
+    } catch (error) {
+      final message = _friendlyError(error);
+      if (mounted) {
+        setState(() {
+          _themeMode = previous;
           _errorMessage = message;
         });
       }

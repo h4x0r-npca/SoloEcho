@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:soloecho/models/app_theme_mode.dart';
 import 'package:soloecho/models/solo_echo_account.dart';
 import 'package:soloecho/models/timeline_entry.dart';
 import 'package:soloecho/models/workspace_info.dart';
@@ -42,6 +43,260 @@ void main() {
       find.widgetWithIcon(IconButton, Icons.send),
     );
     expect(sendButton.onPressed, isNull);
+
+    await _disposeHome(tester);
+  });
+
+  testWidgets('search icon appears before settings and opens dialog',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: _buildHome(),
+      ),
+    );
+
+    expect(find.byTooltip('검색'), findsOneWidget);
+    expect(find.byTooltip('설정'), findsOneWidget);
+    expect(
+      tester.getCenter(find.byTooltip('검색')).dx,
+      lessThan(tester.getCenter(find.byTooltip('설정')).dx),
+    );
+
+    await _openSearchDialog(tester);
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(_dialogTextFieldFinder(), findsOneWidget);
+
+    await _disposeHome(tester);
+  });
+
+  testWidgets('ctrl f opens search dialog', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: _buildHome(),
+      ),
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyF);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyF);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+
+    await _disposeHome(tester);
+  });
+
+  testWidgets('meta f opens search dialog', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: _buildHome(),
+      ),
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyF);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyF);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+
+    await _disposeHome(tester);
+  });
+
+  testWidgets('chat search keeps all entries and cycles through matches',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: _buildHome(
+          entries: <TimelineEntry>[
+            TimelineEntry(
+              timestamp: DateTime(2026, 6, 26, 12),
+              content: '첫 번째 야옹',
+            ),
+            TimelineEntry(
+              timestamp: DateTime(2026, 6, 26, 11),
+              content: '멍멍',
+            ),
+            TimelineEntry(
+              timestamp: DateTime(2026, 6, 26, 10),
+              content: '두 번째 야옹',
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await _searchFor(tester, '야옹');
+
+    expect(find.text('1 / 2'), findsOneWidget);
+    expect(find.byType(CircleAvatar), findsNWidgets(3));
+
+    await tester.tap(find.byTooltip('다음 검색 결과'));
+    await tester.pump();
+    expect(find.text('2 / 2'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('다음 검색 결과'));
+    await tester.pump();
+    expect(find.text('1 / 2'), findsOneWidget);
+
+    await _disposeHome(tester);
+  });
+
+  testWidgets('chat search scrolls past tall entries to the current match',
+      (tester) async {
+    final longEntry = List<String>.filled(24, '길게 이어지는 문장').join('\n');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: _buildHome(
+          entries: <TimelineEntry>[
+            TimelineEntry(
+              timestamp: DateTime(2026, 6, 26, 12),
+              content: '첫 번째 야옹',
+            ),
+            TimelineEntry(
+              timestamp: DateTime(2026, 6, 26, 11),
+              content: longEntry,
+            ),
+            TimelineEntry(
+              timestamp: DateTime(2026, 6, 26, 10),
+              content: '위에 숨어있던 야옹',
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await _searchFor(tester, '야옹');
+    await tester.tap(find.byTooltip('다음 검색 결과'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final target = find.textContaining('위에 숨어있던 야옹');
+    expect(target, findsOneWidget);
+    final targetTop = tester.getTopLeft(target).dy;
+    final composerTop = tester.getTopLeft(find.text('메시지 입력')).dy;
+
+    expect(targetTop, greaterThan(120));
+    expect(targetTop, lessThan(composerTop));
+
+    await _disposeHome(tester);
+  });
+
+  testWidgets('chat search reveals matches near the bottom of tall entries',
+      (tester) async {
+    final longEntry = '${List<String>.filled(24, '위쪽에 있는 긴 문장').join('\n')}\n'
+        '마지막 줄의 야옹';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: _buildHome(
+          entries: <TimelineEntry>[
+            TimelineEntry(
+              timestamp: DateTime(2026, 6, 26, 12),
+              content: '첫 번째 야옹',
+            ),
+            TimelineEntry(
+              timestamp: DateTime(2026, 6, 26, 11),
+              content: longEntry,
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await _searchFor(tester, '야옹');
+    await tester.tap(find.byTooltip('다음 검색 결과'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final target = find.textContaining('마지막 줄의 야옹');
+    expect(target, findsOneWidget);
+    final targetBottom = tester.getBottomLeft(target).dy;
+    final statusBottom = tester.getBottomLeft(find.text('2 / 2')).dy;
+    final composerTop = tester.getTopLeft(find.text('메시지 입력')).dy;
+
+    expect(targetBottom, greaterThan(statusBottom));
+    expect(targetBottom, lessThan(composerTop));
+
+    await _disposeHome(tester);
+  });
+
+  testWidgets('thread search filters to matching entries', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: _buildHome(
+          writingMode: WritingMode.thread,
+          entries: <TimelineEntry>[
+            TimelineEntry(
+              timestamp: DateTime(2026, 6, 26, 12),
+              content: '첫 번째 야옹',
+            ),
+            TimelineEntry(
+              timestamp: DateTime(2026, 6, 26, 11),
+              content: '멍멍',
+            ),
+            TimelineEntry(
+              timestamp: DateTime(2026, 6, 26, 10),
+              content: '두 번째 야옹',
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await _searchFor(tester, '야옹');
+
+    expect(find.text('2개 결과'), findsOneWidget);
+    expect(find.byType(CircleAvatar), findsNWidgets(3));
+    expect(find.textContaining('멍멍'), findsNothing);
+
+    await _disposeHome(tester);
+  });
+
+  testWidgets('thread search shows empty result and clear restores list',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: _buildHome(
+          writingMode: WritingMode.thread,
+          entries: <TimelineEntry>[
+            TimelineEntry(
+              timestamp: DateTime(2026, 6, 26, 12),
+              content: '야옹',
+            ),
+            TimelineEntry(
+              timestamp: DateTime(2026, 6, 26, 11),
+              content: '멍멍',
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await _searchFor(tester, '없음');
+
+    expect(find.text('0개 결과'), findsOneWidget);
+    expect(find.text('검색 결과가 없습니다'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('검색 해제'));
+    await tester.pump();
+
+    expect(find.text('0개 결과'), findsNothing);
+    expect(find.byType(CircleAvatar), findsNWidgets(3));
 
     await _disposeHome(tester);
   });
@@ -453,8 +708,10 @@ HomeScaffold _buildHome({
   SoloEchoAccount account = const SoloEchoAccount(email: 'me@example.com'),
   List<TimelineEntry> entries = const <TimelineEntry>[],
   WritingMode writingMode = WritingMode.chat,
+  AppThemeMode themeMode = AppThemeMode.dark,
   Future<void> Function(String content, DateTime timestamp)? onSave,
   Future<void> Function(WritingMode mode)? onWritingModeChanged,
+  Future<void> Function(AppThemeMode mode)? onThemeModeChanged,
 }) {
   return HomeScaffold(
     account: account,
@@ -464,12 +721,14 @@ HomeScaffold _buildHome({
     ),
     entries: entries,
     writingMode: writingMode,
+    themeMode: themeMode,
     isLoadingTimeline: false,
     isSaving: false,
     lastSync: null,
     onRefresh: () async {},
     onSave: onSave ?? (content, timestamp) async {},
     onWritingModeChanged: onWritingModeChanged ?? (mode) async {},
+    onThemeModeChanged: onThemeModeChanged ?? (mode) async {},
     onSignOut: () async {},
   );
 }
@@ -481,6 +740,33 @@ Finder _liveClockFinder() {
   return find.byWidgetPredicate(
     (widget) => widget is Text && pattern.hasMatch(widget.data ?? ''),
   );
+}
+
+Finder _dialogTextFieldFinder() {
+  return find.descendant(
+    of: find.byType(AlertDialog),
+    matching: find.byType(TextField),
+  );
+}
+
+Future<void> _openSearchDialog(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('검색'));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 250));
+}
+
+Future<void> _searchFor(WidgetTester tester, String query) async {
+  await _openSearchDialog(tester);
+  await tester.enterText(_dialogTextFieldFinder(), query);
+  await tester.pump();
+  await tester.tap(
+    find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.widgetWithText(FilledButton, '검색'),
+    ),
+  );
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 250));
 }
 
 Future<void> _disposeHome(WidgetTester tester) async {

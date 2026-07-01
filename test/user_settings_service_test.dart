@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:soloecho/models/app_theme_mode.dart';
 import 'package:soloecho/models/writing_mode.dart';
 import 'package:soloecho/services/key_value_store.dart';
 import 'package:soloecho/services/user_settings_service.dart';
@@ -26,6 +27,29 @@ void main() {
     final service = UserSettingsService(storage: storage);
 
     expect(await service.readWritingMode(), WritingMode.chat);
+  });
+
+  test('reads dark theme by default', () async {
+    final service = UserSettingsService(storage: _FakeKeyValueStore());
+
+    expect(await service.readThemeMode(), AppThemeMode.dark);
+  });
+
+  test('stores and reads theme mode', () async {
+    final storage = _FakeKeyValueStore();
+    final service = UserSettingsService(storage: storage);
+
+    await service.writeThemeMode(AppThemeMode.light);
+
+    expect(await service.readThemeMode(), AppThemeMode.light);
+    expect(storage.values['theme_mode'], 'light');
+  });
+
+  test('falls back to dark theme for unknown storage values', () async {
+    final storage = _FakeKeyValueStore()..values['theme_mode'] = 'system';
+    final service = UserSettingsService(storage: storage);
+
+    expect(await service.readThemeMode(), AppThemeMode.dark);
   });
 }
 

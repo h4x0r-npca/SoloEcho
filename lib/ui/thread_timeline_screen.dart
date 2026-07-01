@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../models/solo_echo_account.dart';
 import '../models/timeline_entry.dart';
+import 'app_theme.dart';
 import 'profile_avatar.dart';
+import 'search_highlight.dart';
 
 class ThreadTimelineScreen extends StatelessWidget {
   const ThreadTimelineScreen({
@@ -11,12 +13,16 @@ class ThreadTimelineScreen extends StatelessWidget {
     required this.entries,
     required this.isLoading,
     required this.onRefresh,
+    this.searchQuery,
+    this.emptyMessage,
   });
 
   final SoloEchoAccount account;
   final List<TimelineEntry> entries;
   final bool isLoading;
   final Future<void> Function() onRefresh;
+  final String? searchQuery;
+  final String? emptyMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -30,9 +36,9 @@ class ThreadTimelineScreen extends StatelessWidget {
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: <Widget>[
           if (entries.isEmpty)
-            const SliverFillRemaining(
+            SliverFillRemaining(
               hasScrollBody: false,
-              child: Center(child: Text('아직 기록이 없습니다')),
+              child: Center(child: Text(emptyMessage ?? '아직 기록이 없습니다')),
             )
           else
             SliverPadding(
@@ -43,6 +49,7 @@ class ThreadTimelineScreen extends StatelessWidget {
                   return _ThreadEntryCard(
                     account: account,
                     entry: entries[index],
+                    searchQuery: searchQuery ?? '',
                   );
                 },
               ),
@@ -57,21 +64,24 @@ class _ThreadEntryCard extends StatelessWidget {
   const _ThreadEntryCard({
     required this.account,
     required this.entry,
+    required this.searchQuery,
   });
 
   final SoloEchoAccount account;
   final TimelineEntry entry;
+  final String searchQuery;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colors = SoloEchoColors.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
+          color: colors.threadCard,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: theme.colorScheme.outlineVariant),
+          border: Border.all(color: colors.cardBorder),
         ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 13),
@@ -87,16 +97,20 @@ class _ThreadEntryCard extends StatelessWidget {
                     Text(
                       entry.formattedTimestamp,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                        color: colors.textSecondary,
                         fontFeatures: const <FontFeature>[
                           FontFeature.tabularFigures(),
                         ],
                       ),
                     ),
                     const SizedBox(height: 8),
-                    SelectableText(
-                      entry.content,
-                      style: theme.textTheme.bodyLarge?.copyWith(height: 1.45),
+                    SearchHighlightedText(
+                      text: entry.content,
+                      query: searchQuery,
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: colors.textPrimary,
+                        height: 1.45,
+                      ),
                     ),
                   ],
                 ),
