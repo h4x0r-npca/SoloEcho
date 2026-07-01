@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'models/app_theme_mode.dart';
+import 'models/font_scale_step.dart';
 import 'models/solo_echo_account.dart';
 import 'models/timeline_entry.dart';
 import 'models/workspace_info.dart';
@@ -14,6 +15,7 @@ import 'services/user_settings_service.dart';
 import 'ui/app_theme.dart';
 import 'ui/home_scaffold.dart';
 import 'ui/login_screen.dart';
+import 'utils/friendly_error.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -41,6 +43,7 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
   List<TimelineEntry> _entries = <TimelineEntry>[];
   WritingMode _writingMode = WritingMode.chat;
   AppThemeMode _themeMode = AppThemeMode.dark;
+  FontScaleStep _fontScaleStep = FontScaleStep.defaultValue;
   DateTime? _lastSync;
   String? _errorMessage;
   bool _isBootstrapping = true;
@@ -115,6 +118,7 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
       entries: _entries,
       writingMode: _writingMode,
       themeMode: _themeMode,
+      fontScaleStep: _fontScaleStep,
       isLoadingTimeline: _isLoadingTimeline,
       isSaving: _isSaving,
       lastSync: _lastSync,
@@ -122,6 +126,7 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
       onSave: _saveEntry,
       onWritingModeChanged: _changeWritingMode,
       onThemeModeChanged: _changeThemeMode,
+      onFontScaleStepChanged: _changeFontScaleStep,
       onSignOut: _signOut,
     );
   }
@@ -130,10 +135,12 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
     try {
       final writingMode = await _settingsService.readWritingMode();
       final themeMode = await _settingsService.readThemeMode();
+      final fontScaleStep = await _settingsService.readFontScaleStep();
       if (mounted) {
         setState(() {
           _writingMode = writingMode;
           _themeMode = themeMode;
+          _fontScaleStep = fontScaleStep;
         });
       }
       final account = await _authService.restoreSession();
@@ -283,6 +290,28 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
       if (mounted) {
         setState(() {
           _themeMode = previous;
+          _errorMessage = message;
+        });
+      }
+      _showSnackBar(message);
+    }
+  }
+
+  Future<void> _changeFontScaleStep(FontScaleStep step) async {
+    if (step == _fontScaleStep) {
+      return;
+    }
+    final previous = _fontScaleStep;
+    setState(() {
+      _fontScaleStep = step;
+    });
+    try {
+      await _settingsService.writeFontScaleStep(step);
+    } catch (error) {
+      final message = _friendlyError(error);
+      if (mounted) {
+        setState(() {
+          _fontScaleStep = previous;
           _errorMessage = message;
         });
       }
@@ -480,32 +509,6 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
   }
 
   String _friendlyError(Object error) {
-    if (error is AuthCancelledException) {
-      return '로그인이 취소되었습니다';
-    }
-    if (error is AuthExpiredException ||
-        AuthService.isRecoverableAuthError(error)) {
-      return '세션이 만료되었습니다. 다시 로그인해 주세요';
-    }
-
-    final text = error.toString();
-    if (text.contains('Google sign-in was cancelled')) {
-      return '로그인이 취소되었습니다';
-    }
-    if (text.contains('Google API authorization is required')) {
-      return 'Google Drive 접근 권한이 필요합니다. 다시 로그인해 주세요';
-    }
-    if (text.contains('SocketException') ||
-        text.contains('Failed host lookup') ||
-        text.contains('Network is unreachable')) {
-      return '네트워크 연결을 확인해 주세요';
-    }
-    if (text.contains('timed out')) {
-      return '로그인 시간이 초과되었습니다';
-    }
-    return text
-        .replaceFirst('Exception: ', '')
-        .replaceFirst('Bad state: ', '')
-        .replaceFirst('StateError: ', '');
+    return friendlyErrorMessage(error);
   }
 }

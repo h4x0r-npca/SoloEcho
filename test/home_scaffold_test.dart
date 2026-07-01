@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soloecho/models/app_theme_mode.dart';
+import 'package:soloecho/models/font_scale_step.dart';
 import 'package:soloecho/models/solo_echo_account.dart';
 import 'package:soloecho/models/timeline_entry.dart';
 import 'package:soloecho/models/workspace_info.dart';
@@ -27,6 +28,23 @@ void main() {
     expect(find.byType(TextField), findsOneWidget);
     expect(find.text('긴글모드'), findsOneWidget);
     expect(_liveClockFinder(), findsOneWidget);
+
+    await _disposeHome(tester);
+  });
+
+  testWidgets('home applies configured font scale after login', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: _buildHome(fontScaleStep: FontScaleStep.extraLarge),
+      ),
+    );
+
+    final titleElement = tester.element(find.text('SoloEcho'));
+    expect(
+      MediaQuery.textScalerOf(titleElement).scale(100),
+      closeTo(130, 0.001),
+    );
 
     await _disposeHome(tester);
   });
@@ -669,6 +687,43 @@ void main() {
     await _disposeHome(tester);
   });
 
+  testWidgets('thread mode control enter saves shown timestamp',
+      (tester) async {
+    String? saved;
+    DateTime? savedAt;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: _buildHome(
+          writingMode: WritingMode.thread,
+          onSave: (content, timestamp) async {
+            saved = content;
+            savedAt = timestamp;
+          },
+        ),
+      ),
+    );
+
+    await tester.showKeyboard(find.byType(TextField));
+    final visibleClock = tester.widget<Text>(_liveClockFinder()).data;
+    await tester.enterText(find.byType(TextField), '  shortcut entry  ');
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+
+    expect(saved, 'shortcut entry');
+    expect(savedAt, isNotNull);
+    expect(TimestampFormatter.format(savedAt!), visibleClock);
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller?.text, isEmpty);
+
+    await _disposeHome(tester);
+  });
+
   testWidgets('thread mode record button saves shown timestamp',
       (tester) async {
     String? saved;
@@ -709,9 +764,11 @@ HomeScaffold _buildHome({
   List<TimelineEntry> entries = const <TimelineEntry>[],
   WritingMode writingMode = WritingMode.chat,
   AppThemeMode themeMode = AppThemeMode.dark,
+  FontScaleStep fontScaleStep = FontScaleStep.defaultValue,
   Future<void> Function(String content, DateTime timestamp)? onSave,
   Future<void> Function(WritingMode mode)? onWritingModeChanged,
   Future<void> Function(AppThemeMode mode)? onThemeModeChanged,
+  Future<void> Function(FontScaleStep step)? onFontScaleStepChanged,
 }) {
   return HomeScaffold(
     account: account,
@@ -722,6 +779,7 @@ HomeScaffold _buildHome({
     entries: entries,
     writingMode: writingMode,
     themeMode: themeMode,
+    fontScaleStep: fontScaleStep,
     isLoadingTimeline: false,
     isSaving: false,
     lastSync: null,
@@ -729,6 +787,7 @@ HomeScaffold _buildHome({
     onSave: onSave ?? (content, timestamp) async {},
     onWritingModeChanged: onWritingModeChanged ?? (mode) async {},
     onThemeModeChanged: onThemeModeChanged ?? (mode) async {},
+    onFontScaleStepChanged: onFontScaleStepChanged ?? (step) async {},
     onSignOut: () async {},
   );
 }

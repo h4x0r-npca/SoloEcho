@@ -136,6 +136,19 @@ If the project is located under a path with Korean or other non-ASCII characters
 
 The app requests `openid`, `email`, `profile`, and `https://www.googleapis.com/auth/drive.file`.
 
+### Version Management
+
+SoloEcho uses the Flutter version in `pubspec.yaml`, the release notes in `CHANGELOG.md`, and Git tags on GitHub together.
+
+For each release:
+
+1. Update `version` in `pubspec.yaml`.
+2. Add release notes to `CHANGELOG.md`.
+3. Commit the changes.
+4. Create and push a tag such as `v0.2.1`.
+
+Current version: `0.2.1+3`.
+
 ### Data Layout
 
 The app uses the `Log` sheet:
@@ -280,6 +293,19 @@ macOS에서 한 번에 실행하려면:
 
 앱은 `openid`, `email`, `profile`, `https://www.googleapis.com/auth/drive.file` 권한을 요청합니다.
 
+### 버전 관리
+
+SoloEcho는 `pubspec.yaml`의 Flutter 앱 버전, `CHANGELOG.md`의 변경 이력, GitHub의 Git 태그를 함께 사용해 버전을 관리합니다.
+
+새 버전을 만들 때는 다음 순서를 사용합니다.
+
+1. `pubspec.yaml`의 `version` 값을 올립니다.
+2. `CHANGELOG.md`에 변경사항을 적습니다.
+3. 변경사항을 커밋합니다.
+4. `v0.2.1` 같은 태그를 만들고 GitHub에 푸시합니다.
+
+현재 버전: `0.2.1+3`
+
 ### 데이터 구조
 
 앱은 `Log` 시트를 사용합니다.
@@ -423,6 +449,19 @@ macOS で一つのコマンドとして実行する場合:
 ```
 
 アプリは `openid`, `email`, `profile`, `https://www.googleapis.com/auth/drive.file` の権限を要求します。
+
+### バージョン管理
+
+SoloEcho は `pubspec.yaml` の Flutter アプリバージョン、`CHANGELOG.md` の変更履歴、GitHub の Git タグを組み合わせてバージョンを管理します。
+
+新しいバージョンを作るときは、次の流れを使います。
+
+1. `pubspec.yaml` の `version` を更新します。
+2. `CHANGELOG.md` に変更内容を書きます。
+3. 変更をコミットします。
+4. `v0.2.1` のようなタグを作成して GitHub に push します。
+
+現在のバージョン: `0.2.1+3`
 
 ### データ構造
 

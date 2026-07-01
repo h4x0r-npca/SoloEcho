@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/app_theme_mode.dart';
+import '../models/font_scale_step.dart';
 import '../models/solo_echo_account.dart';
 import '../models/timeline_entry.dart';
 import '../models/workspace_info.dart';
@@ -23,6 +24,7 @@ class HomeScaffold extends StatefulWidget {
     required this.entries,
     required this.writingMode,
     required this.themeMode,
+    required this.fontScaleStep,
     required this.isLoadingTimeline,
     required this.isSaving,
     required this.lastSync,
@@ -30,6 +32,7 @@ class HomeScaffold extends StatefulWidget {
     required this.onSave,
     required this.onWritingModeChanged,
     required this.onThemeModeChanged,
+    required this.onFontScaleStepChanged,
     required this.onSignOut,
   });
 
@@ -38,6 +41,7 @@ class HomeScaffold extends StatefulWidget {
   final List<TimelineEntry> entries;
   final WritingMode writingMode;
   final AppThemeMode themeMode;
+  final FontScaleStep fontScaleStep;
   final bool isLoadingTimeline;
   final bool isSaving;
   final DateTime? lastSync;
@@ -45,6 +49,7 @@ class HomeScaffold extends StatefulWidget {
   final Future<void> Function(String content, DateTime timestamp) onSave;
   final Future<void> Function(WritingMode mode) onWritingModeChanged;
   final Future<void> Function(AppThemeMode mode) onThemeModeChanged;
+  final Future<void> Function(FontScaleStep step) onFontScaleStepChanged;
   final Future<void> Function() onSignOut;
 
   @override
@@ -99,43 +104,49 @@ class _HomeScaffoldState extends State<HomeScaffold> {
 
   @override
   Widget build(BuildContext context) {
-    return Shortcuts(
-      shortcuts: <ShortcutActivator, Intent>{
-        const SingleActivator(LogicalKeyboardKey.keyF, control: true):
-            const _OpenSearchIntent(),
-        const SingleActivator(LogicalKeyboardKey.keyF, meta: true):
-            const _OpenSearchIntent(),
-      },
-      child: Actions(
-        actions: <Type, Action<Intent>>{
-          _OpenSearchIntent: CallbackAction<_OpenSearchIntent>(
-            onInvoke: (intent) {
-              unawaited(_openSearchDialog());
-              return null;
-            },
-          ),
+    final mediaQuery = MediaQuery.of(context);
+    return MediaQuery(
+      data: mediaQuery.copyWith(
+        textScaler: TextScaler.linear(widget.fontScaleStep.scale),
+      ),
+      child: Shortcuts(
+        shortcuts: <ShortcutActivator, Intent>{
+          const SingleActivator(LogicalKeyboardKey.keyF, control: true):
+              const _OpenSearchIntent(),
+          const SingleActivator(LogicalKeyboardKey.keyF, meta: true):
+              const _OpenSearchIntent(),
         },
-        child: Focus(
-          autofocus: true,
-          child: Scaffold(
-            appBar: AppBar(
-              title: const _SoloEchoTitle(),
-              actions: <Widget>[
-                IconButton(
-                  tooltip: '검색',
-                  icon: const Icon(Icons.search),
-                  onPressed: () => unawaited(_openSearchDialog()),
-                ),
-                IconButton(
-                  tooltip: '설정',
-                  icon: const Icon(Icons.settings_outlined),
-                  onPressed: () => _openSettings(context),
-                ),
-              ],
+        child: Actions(
+          actions: <Type, Action<Intent>>{
+            _OpenSearchIntent: CallbackAction<_OpenSearchIntent>(
+              onInvoke: (intent) {
+                unawaited(_openSearchDialog());
+                return null;
+              },
             ),
-            body: widget.writingMode == WritingMode.thread
-                ? _buildThreadBody()
-                : _buildChatBody(),
+          },
+          child: Focus(
+            autofocus: true,
+            child: Scaffold(
+              appBar: AppBar(
+                title: const _SoloEchoTitle(),
+                actions: <Widget>[
+                  IconButton(
+                    tooltip: '검색',
+                    icon: const Icon(Icons.search),
+                    onPressed: () => unawaited(_openSearchDialog()),
+                  ),
+                  IconButton(
+                    tooltip: '설정',
+                    icon: const Icon(Icons.settings_outlined),
+                    onPressed: () => _openSettings(context),
+                  ),
+                ],
+              ),
+              body: widget.writingMode == WritingMode.thread
+                  ? _buildThreadBody()
+                  : _buildChatBody(),
+            ),
           ),
         ),
       ),
@@ -337,9 +348,11 @@ class _HomeScaffoldState extends State<HomeScaffold> {
           workspace: widget.workspace,
           writingMode: widget.writingMode,
           themeMode: widget.themeMode,
+          fontScaleStep: widget.fontScaleStep,
           lastSync: widget.lastSync,
           onWritingModeChanged: widget.onWritingModeChanged,
           onThemeModeChanged: widget.onThemeModeChanged,
+          onFontScaleStepChanged: widget.onFontScaleStepChanged,
           onSignOut: () async {
             Navigator.of(context).pop();
             await widget.onSignOut();
@@ -381,15 +394,25 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   }
 
   KeyEventResult _handleInputKeyEvent(FocusNode node, KeyEvent event) {
-    if (widget.writingMode == WritingMode.thread ||
-        _isLongMode ||
-        event is! KeyDownEvent) {
+    if (event is! KeyDownEvent) {
       return KeyEventResult.ignored;
     }
 
     final isEnter = event.logicalKey == LogicalKeyboardKey.enter ||
         event.logicalKey == LogicalKeyboardKey.numpadEnter;
     if (!isEnter) {
+      return KeyEventResult.ignored;
+    }
+
+    if (widget.writingMode == WritingMode.thread) {
+      if (HardwareKeyboard.instance.isControlPressed) {
+        unawaited(_sendCurrentText());
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+
+    if (_isLongMode) {
       return KeyEventResult.ignored;
     }
 

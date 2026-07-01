@@ -27,6 +27,7 @@ dist/
 # Local script secrets
 scripts/*.local.env
 ios/Flutter/GoogleSignIn.local.xcconfig
+/Logo_*.png
 
 # OS
 .DS_Store

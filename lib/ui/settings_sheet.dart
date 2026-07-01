@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/app_theme_mode.dart';
+import '../models/font_scale_step.dart';
 import '../models/solo_echo_account.dart';
 import '../models/workspace_info.dart';
 import '../models/writing_mode.dart';
@@ -17,9 +18,11 @@ class SettingsSheet extends StatelessWidget {
     required this.workspace,
     required this.writingMode,
     required this.themeMode,
+    required this.fontScaleStep,
     required this.lastSync,
     required this.onWritingModeChanged,
     required this.onThemeModeChanged,
+    required this.onFontScaleStepChanged,
     required this.onSignOut,
   });
 
@@ -27,9 +30,11 @@ class SettingsSheet extends StatelessWidget {
   final WorkspaceInfo workspace;
   final WritingMode writingMode;
   final AppThemeMode themeMode;
+  final FontScaleStep fontScaleStep;
   final DateTime? lastSync;
   final Future<void> Function(WritingMode mode) onWritingModeChanged;
   final Future<void> Function(AppThemeMode mode) onThemeModeChanged;
+  final Future<void> Function(FontScaleStep step) onFontScaleStepChanged;
   final Future<void> Function() onSignOut;
 
   @override
@@ -81,6 +86,10 @@ class SettingsSheet extends StatelessWidget {
               value: themeMode,
               onChanged: onThemeModeChanged,
             ),
+            _FontScaleControl(
+              value: fontScaleStep,
+              onChanged: onFontScaleStepChanged,
+            ),
             const SizedBox(height: 18),
             OutlinedButton.icon(
               onPressed: onSignOut,
@@ -92,6 +101,90 @@ class SettingsSheet extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _FontScaleControl extends StatelessWidget {
+  const _FontScaleControl({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final FontScaleStep value;
+  final Future<void> Function(FontScaleStep step) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = SoloEchoColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(
+            Icons.format_size,
+            size: 22,
+            color: colors.textSecondary,
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 64,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text(
+                '글씨',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colors.textSecondary,
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Text(
+                      value.label,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colors.textPrimary,
+                        fontFeatures: const <FontFeature>[
+                          FontFeature.tabularFigures(),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    if (!value.isDefault)
+                      TextButton(
+                        onPressed: () {
+                          unawaited(
+                            onChanged(FontScaleStep.defaultValue),
+                          );
+                        },
+                        child: const Text('기본크기'),
+                      ),
+                  ],
+                ),
+                Slider(
+                  min: -3,
+                  max: 3,
+                  divisions: 6,
+                  value: value.sliderValue,
+                  label: value.label,
+                  onChanged: (sliderValue) {
+                    unawaited(
+                      onChanged(FontScaleStep.fromSliderValue(sliderValue)),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

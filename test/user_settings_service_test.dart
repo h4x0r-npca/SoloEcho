@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soloecho/models/app_theme_mode.dart';
+import 'package:soloecho/models/font_scale_step.dart';
 import 'package:soloecho/models/writing_mode.dart';
 import 'package:soloecho/services/key_value_store.dart';
 import 'package:soloecho/services/user_settings_service.dart';
@@ -50,6 +51,32 @@ void main() {
     final service = UserSettingsService(storage: storage);
 
     expect(await service.readThemeMode(), AppThemeMode.dark);
+  });
+
+  test('reads default font scale by default', () async {
+    final service = UserSettingsService(storage: _FakeKeyValueStore());
+
+    expect(await service.readFontScaleStep(), FontScaleStep.defaultValue);
+  });
+
+  test('stores and reads font scale step', () async {
+    final storage = _FakeKeyValueStore();
+    final service = UserSettingsService(storage: storage);
+
+    await service.writeFontScaleStep(FontScaleStep.large);
+
+    expect(await service.readFontScaleStep(), FontScaleStep.large);
+    expect(storage.values['font_scale_step'], '2');
+  });
+
+  test('falls back to default font scale for invalid storage values', () async {
+    final storage = _FakeKeyValueStore()..values['font_scale_step'] = 'huge';
+    final service = UserSettingsService(storage: storage);
+
+    expect(await service.readFontScaleStep(), FontScaleStep.defaultValue);
+
+    storage.values['font_scale_step'] = '99';
+    expect(await service.readFontScaleStep(), FontScaleStep.defaultValue);
   });
 }
 
