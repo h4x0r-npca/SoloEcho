@@ -10,6 +10,7 @@ import '../models/workspace_info.dart';
 import '../models/writing_mode.dart';
 import '../utils/timestamp_formatter.dart';
 import 'app_theme.dart';
+import 'profile_avatar.dart';
 
 class SettingsSheet extends StatelessWidget {
   const SettingsSheet({
@@ -19,10 +20,16 @@ class SettingsSheet extends StatelessWidget {
     required this.writingMode,
     required this.themeMode,
     required this.fontScaleStep,
+    required this.motionEffectsEnabled,
+    required this.lockEnabled,
     required this.lastSync,
     required this.onWritingModeChanged,
     required this.onThemeModeChanged,
     required this.onFontScaleStepChanged,
+    required this.onMotionEffectsChanged,
+    required this.onEnableLock,
+    required this.onDisableLock,
+    required this.onChangeLockPassword,
     required this.onSignOut,
   });
 
@@ -31,10 +38,19 @@ class SettingsSheet extends StatelessWidget {
   final WritingMode writingMode;
   final AppThemeMode themeMode;
   final FontScaleStep fontScaleStep;
+  final bool motionEffectsEnabled;
+  final bool lockEnabled;
   final DateTime? lastSync;
   final Future<void> Function(WritingMode mode) onWritingModeChanged;
   final Future<void> Function(AppThemeMode mode) onThemeModeChanged;
   final Future<void> Function(FontScaleStep step) onFontScaleStepChanged;
+  final Future<void> Function(bool enabled) onMotionEffectsChanged;
+  final Future<String?> Function(String password) onEnableLock;
+  final Future<String?> Function(String currentPassword) onDisableLock;
+  final Future<String?> Function({
+    required String currentPassword,
+    required String newPassword,
+  }) onChangeLockPassword;
   final Future<void> Function() onSignOut;
 
   @override
@@ -49,11 +65,7 @@ class SettingsSheet extends StatelessWidget {
           children: <Widget>[
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(
-                backgroundColor: colors.point,
-                foregroundColor: colors.pointText,
-                child: Text(account.initials),
-              ),
+              leading: ProfileAvatar(account: account),
               title: Text(
                 account.displayName ?? account.email,
                 style: TextStyle(color: colors.textPrimary),
@@ -90,6 +102,16 @@ class SettingsSheet extends StatelessWidget {
               value: fontScaleStep,
               onChanged: onFontScaleStepChanged,
             ),
+            _MotionEffectsControl(
+              value: motionEffectsEnabled,
+              onChanged: onMotionEffectsChanged,
+            ),
+            _LockModeControl(
+              enabled: lockEnabled,
+              onEnableLock: onEnableLock,
+              onDisableLock: onDisableLock,
+              onChangeLockPassword: onChangeLockPassword,
+            ),
             const SizedBox(height: 18),
             OutlinedButton.icon(
               onPressed: onSignOut,
@@ -103,6 +125,375 @@ class SettingsSheet extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _MotionEffectsControl extends StatelessWidget {
+  const _MotionEffectsControl({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final bool value;
+  final Future<void> Function(bool enabled) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = SoloEchoColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: <Widget>[
+          Icon(
+            Icons.animation_outlined,
+            size: 22,
+            color: colors.textSecondary,
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 64,
+            child: Text(
+              '동작',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colors.textSecondary,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              '애니메이션',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colors.textPrimary,
+              ),
+            ),
+          ),
+          Switch(
+            value: value,
+            onChanged: (enabled) {
+              unawaited(onChanged(enabled));
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LockModeControl extends StatelessWidget {
+  const _LockModeControl({
+    required this.enabled,
+    required this.onEnableLock,
+    required this.onDisableLock,
+    required this.onChangeLockPassword,
+  });
+
+  final bool enabled;
+  final Future<String?> Function(String password) onEnableLock;
+  final Future<String?> Function(String currentPassword) onDisableLock;
+  final Future<String?> Function({
+    required String currentPassword,
+    required String newPassword,
+  }) onChangeLockPassword;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = SoloEchoColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(
+            enabled ? Icons.lock_outline : Icons.lock_open_outlined,
+            size: 22,
+            color: colors.textSecondary,
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 64,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                '잠금',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colors.textSecondary,
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: <Widget>[
+                Chip(
+                  label: Text(enabled ? '켜짐' : '꺼짐'),
+                  visualDensity: VisualDensity.compact,
+                ),
+                if (enabled) ...<Widget>[
+                  OutlinedButton(
+                    onPressed: () => _openChangePasswordDialog(context),
+                    child: const Text('비밀번호 변경'),
+                  ),
+                  OutlinedButton(
+                    onPressed: () => _openDisableDialog(context),
+                    child: const Text('잠금 끄기'),
+                  ),
+                ] else
+                  FilledButton(
+                    onPressed: () => _openEnableDialog(context),
+                    child: const Text('잠금 켜기'),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openEnableDialog(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return _LockPasswordDialog(
+          title: '잠금 켜기',
+          primaryActionLabel: '완료',
+          requireCurrentPassword: false,
+          requireNewPassword: true,
+          onSubmit: ({
+            required currentPassword,
+            required newPassword,
+          }) {
+            return onEnableLock(newPassword);
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _openDisableDialog(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return _LockPasswordDialog(
+          title: '잠금 끄기',
+          primaryActionLabel: '끄기',
+          requireCurrentPassword: true,
+          requireNewPassword: false,
+          onSubmit: ({
+            required currentPassword,
+            required newPassword,
+          }) {
+            return onDisableLock(currentPassword);
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _openChangePasswordDialog(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return _LockPasswordDialog(
+          title: '비밀번호 변경',
+          primaryActionLabel: '변경',
+          requireCurrentPassword: true,
+          requireNewPassword: true,
+          onSubmit: ({
+            required currentPassword,
+            required newPassword,
+          }) {
+            return onChangeLockPassword(
+              currentPassword: currentPassword,
+              newPassword: newPassword,
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _LockPasswordDialog extends StatefulWidget {
+  const _LockPasswordDialog({
+    required this.title,
+    required this.primaryActionLabel,
+    required this.requireCurrentPassword,
+    required this.requireNewPassword,
+    required this.onSubmit,
+  });
+
+  final String title;
+  final String primaryActionLabel;
+  final bool requireCurrentPassword;
+  final bool requireNewPassword;
+  final Future<String?> Function({
+    required String currentPassword,
+    required String newPassword,
+  }) onSubmit;
+
+  @override
+  State<_LockPasswordDialog> createState() => _LockPasswordDialogState();
+}
+
+class _LockPasswordDialogState extends State<_LockPasswordDialog> {
+  final TextEditingController _currentController = TextEditingController();
+  final TextEditingController _newController = TextEditingController();
+  final TextEditingController _confirmController = TextEditingController();
+
+  bool _isBusy = false;
+  bool _obscure = true;
+  String? _errorMessage;
+
+  @override
+  void dispose() {
+    _currentController.dispose();
+    _newController.dispose();
+    _confirmController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            if (widget.requireCurrentPassword) ...<Widget>[
+              _buildPasswordField(
+                controller: _currentController,
+                label: '현재 비밀번호',
+              ),
+              const SizedBox(height: 10),
+            ],
+            if (widget.requireNewPassword) ...<Widget>[
+              _buildPasswordField(
+                controller: _newController,
+                label: '새 비밀번호',
+              ),
+              const SizedBox(height: 10),
+              _buildPasswordField(
+                controller: _confirmController,
+                label: '새 비밀번호 확인',
+                textInputAction: TextInputAction.done,
+              ),
+            ],
+            if (_errorMessage != null) ...<Widget>[
+              const SizedBox(height: 12),
+              Text(
+                _errorMessage!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: _isBusy ? null : () => Navigator.of(context).pop(),
+          child: const Text('취소'),
+        ),
+        FilledButton(
+          onPressed: _isBusy ? null : _submit,
+          child: _isBusy
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Text(widget.primaryActionLabel),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPasswordField({
+    required TextEditingController controller,
+    required String label,
+    TextInputAction textInputAction = TextInputAction.next,
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: _obscure,
+      enabled: !_isBusy,
+      textInputAction: textInputAction,
+      onSubmitted: (_) {
+        if (textInputAction == TextInputAction.done) {
+          _submit();
+        }
+      },
+      decoration: InputDecoration(
+        labelText: label,
+        suffixIcon: IconButton(
+          tooltip: _obscure ? '비밀번호 보기' : '비밀번호 숨기기',
+          onPressed: () {
+            setState(() {
+              _obscure = !_obscure;
+            });
+          },
+          icon: Icon(
+            _obscure
+                ? Icons.visibility_outlined
+                : Icons.visibility_off_outlined,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
+    if (_isBusy) {
+      return;
+    }
+    final currentPassword = _currentController.text;
+    final newPassword = _newController.text;
+    final confirmPassword = _confirmController.text;
+
+    if (widget.requireCurrentPassword && currentPassword.isEmpty) {
+      setState(() {
+        _errorMessage = '현재 비밀번호를 입력해 주세요';
+      });
+      return;
+    }
+    if (widget.requireNewPassword && newPassword.isEmpty) {
+      setState(() {
+        _errorMessage = '새 비밀번호를 입력해 주세요';
+      });
+      return;
+    }
+    if (widget.requireNewPassword && newPassword != confirmPassword) {
+      setState(() {
+        _errorMessage = '새 비밀번호가 서로 다릅니다';
+      });
+      return;
+    }
+
+    setState(() {
+      _isBusy = true;
+      _errorMessage = null;
+    });
+    final message = await widget.onSubmit(
+      currentPassword: currentPassword,
+      newPassword: newPassword,
+    );
+    if (!mounted) {
+      return;
+    }
+    if (message != null) {
+      setState(() {
+        _isBusy = false;
+        _errorMessage = message;
+      });
+      return;
+    }
+    Navigator.of(context).pop();
   }
 }
 

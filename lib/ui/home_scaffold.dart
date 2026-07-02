@@ -25,6 +25,8 @@ class HomeScaffold extends StatefulWidget {
     required this.writingMode,
     required this.themeMode,
     required this.fontScaleStep,
+    required this.motionEffectsEnabled,
+    required this.lockEnabled,
     required this.isLoadingTimeline,
     required this.isSaving,
     required this.lastSync,
@@ -33,6 +35,10 @@ class HomeScaffold extends StatefulWidget {
     required this.onWritingModeChanged,
     required this.onThemeModeChanged,
     required this.onFontScaleStepChanged,
+    required this.onMotionEffectsChanged,
+    required this.onEnableLock,
+    required this.onDisableLock,
+    required this.onChangeLockPassword,
     required this.onSignOut,
   });
 
@@ -42,6 +48,8 @@ class HomeScaffold extends StatefulWidget {
   final WritingMode writingMode;
   final AppThemeMode themeMode;
   final FontScaleStep fontScaleStep;
+  final bool motionEffectsEnabled;
+  final bool lockEnabled;
   final bool isLoadingTimeline;
   final bool isSaving;
   final DateTime? lastSync;
@@ -50,6 +58,13 @@ class HomeScaffold extends StatefulWidget {
   final Future<void> Function(WritingMode mode) onWritingModeChanged;
   final Future<void> Function(AppThemeMode mode) onThemeModeChanged;
   final Future<void> Function(FontScaleStep step) onFontScaleStepChanged;
+  final Future<void> Function(bool enabled) onMotionEffectsChanged;
+  final Future<String?> Function(String password) onEnableLock;
+  final Future<String?> Function(String currentPassword) onDisableLock;
+  final Future<String?> Function({
+    required String currentPassword,
+    required String newPassword,
+  }) onChangeLockPassword;
   final Future<void> Function() onSignOut;
 
   @override
@@ -63,12 +78,14 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   );
 
   Timer? _clockTimer;
+  Timer? _revealTimer;
   bool _isLongMode = false;
   bool _isSending = false;
   bool _isApplyingShiftNewLine = false;
   String _lastInputText = '';
   String _searchQuery = '';
   int _currentSearchOrdinal = 0;
+  DateTime? _revealingTimestamp;
   DateTime _clockTimestamp = DateTime.now();
   late String _clockText = TimestampFormatter.format(_clockTimestamp);
 
@@ -95,6 +112,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   @override
   void dispose() {
     _clockTimer?.cancel();
+    _revealTimer?.cancel();
     _inputFocusNode.dispose();
     _controller
       ..removeListener(_handleTextChanged)
@@ -182,6 +200,8 @@ class _HomeScaffoldState extends State<HomeScaffold> {
             onRefresh: widget.onRefresh,
             searchQuery: _searchQuery,
             currentSearchEntryIndex: currentEntryIndex,
+            revealingTimestamp:
+                widget.motionEffectsEnabled ? _revealingTimestamp : null,
           ),
         ),
         SafeArea(
@@ -240,6 +260,8 @@ class _HomeScaffoldState extends State<HomeScaffold> {
             onRefresh: widget.onRefresh,
             searchQuery: _searchQuery,
             emptyMessage: _hasSearch ? '검색 결과가 없습니다' : null,
+            revealingTimestamp:
+                widget.motionEffectsEnabled ? _revealingTimestamp : null,
           ),
         ),
       ],
@@ -349,10 +371,16 @@ class _HomeScaffoldState extends State<HomeScaffold> {
           writingMode: widget.writingMode,
           themeMode: widget.themeMode,
           fontScaleStep: widget.fontScaleStep,
+          motionEffectsEnabled: widget.motionEffectsEnabled,
+          lockEnabled: widget.lockEnabled,
           lastSync: widget.lastSync,
           onWritingModeChanged: widget.onWritingModeChanged,
           onThemeModeChanged: widget.onThemeModeChanged,
           onFontScaleStepChanged: widget.onFontScaleStepChanged,
+          onMotionEffectsChanged: widget.onMotionEffectsChanged,
+          onEnableLock: widget.onEnableLock,
+          onDisableLock: widget.onDisableLock,
+          onChangeLockPassword: widget.onChangeLockPassword,
           onSignOut: () async {
             Navigator.of(context).pop();
             await widget.onSignOut();
@@ -367,6 +395,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     if (content.isEmpty || _isSending || widget.isSaving) {
       return;
     }
+    final timestamp = _clockTimestamp;
 
     setState(() {
       _isSending = true;
@@ -374,13 +403,14 @@ class _HomeScaffoldState extends State<HomeScaffold> {
 
     var didSave = false;
     try {
-      await widget.onSave(content, _clockTimestamp);
+      await widget.onSave(content, timestamp);
       didSave = true;
     } catch (_) {
       // The parent shows the error; keep the draft in place.
     } finally {
       if (mounted) {
         if (didSave) {
+          _startSuccessfulSaveAnimation(timestamp);
           _controller.clear();
           _lastInputText = '';
         }
@@ -391,6 +421,24 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         });
       }
     }
+  }
+
+  void _startSuccessfulSaveAnimation(DateTime timestamp) {
+    if (!widget.motionEffectsEnabled || _hasSearch) {
+      return;
+    }
+    setState(() {
+      _revealingTimestamp = timestamp;
+    });
+    _revealTimer?.cancel();
+    _revealTimer = Timer(const Duration(milliseconds: 760), () {
+      if (!mounted || _revealingTimestamp != timestamp) {
+        return;
+      }
+      setState(() {
+        _revealingTimestamp = null;
+      });
+    });
   }
 
   KeyEventResult _handleInputKeyEvent(FocusNode node, KeyEvent event) {

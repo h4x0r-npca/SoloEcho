@@ -15,6 +15,7 @@ import 'services/user_settings_service.dart';
 import 'ui/app_theme.dart';
 import 'ui/home_scaffold.dart';
 import 'ui/login_screen.dart';
+import 'ui/lock_screen.dart';
 import 'utils/friendly_error.dart';
 
 void main() {
@@ -31,6 +32,7 @@ class SoloEchoApp extends StatefulWidget {
 
 class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
   static const _autoRefreshInterval = Duration(seconds: 20);
+  static const _homeTransitionDuration = Duration(milliseconds: 700);
 
   final AuthService _authService = AuthService();
   final UserSettingsService _settingsService = UserSettingsService();
@@ -44,8 +46,11 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
   WritingMode _writingMode = WritingMode.chat;
   AppThemeMode _themeMode = AppThemeMode.dark;
   FontScaleStep _fontScaleStep = FontScaleStep.defaultValue;
+  bool _motionEffectsEnabled = true;
   DateTime? _lastSync;
   String? _errorMessage;
+  bool _isLockEnabled = false;
+  bool _isLocked = false;
   bool _isBootstrapping = true;
   bool _isSigningIn = false;
   bool _isLoadingTimeline = false;
@@ -74,6 +79,10 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
     final wasInForeground = _isAppInForeground;
     _isAppInForeground = state == AppLifecycleState.resumed;
     if (!wasInForeground && _isAppInForeground) {
+      if (_isLockEnabled && _account != null) {
+        _lockApp();
+        return;
+      }
       _startAutoRefreshTimer();
       unawaited(_refreshTimelineSilently());
     }
@@ -91,19 +100,64 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
         AppThemeMode.dark => ThemeMode.dark,
         AppThemeMode.light => ThemeMode.light,
       },
-      home: _buildHome(),
+      builder: (context, child) {
+        final colors = SoloEchoColors.of(context);
+        return ColoredBox(
+          color: colors.background,
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+      home: AnimatedSwitcher(
+        duration:
+            _motionEffectsEnabled ? _homeTransitionDuration : Duration.zero,
+        switchInCurve: Curves.easeInOutCubic,
+        switchOutCurve: Curves.easeInOutCubic,
+        transitionBuilder: (child, animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: child,
+          );
+        },
+        child: KeyedSubtree(
+          key: ValueKey<String>(_homeStateKey),
+          child: _buildHome(),
+        ),
+      ),
     );
+  }
+
+  String get _homeStateKey {
+    if (_isBootstrapping) {
+      return 'bootstrapping';
+    }
+    if (_account != null && _isLocked) {
+      return 'locked';
+    }
+    if (_account == null || _workspace == null) {
+      return 'login';
+    }
+    return 'home';
   }
 
   Widget _buildHome() {
     if (_isBootstrapping) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      final colors = SoloEchoColors.of(context);
+      return Scaffold(
+        backgroundColor: colors.background,
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     final account = _account;
     final workspace = _workspace;
+    if (account != null && _isLocked) {
+      return LockScreen(
+        onUnlock: _unlockWithPassword,
+        onUnlockComplete: _finishUnlockTransition,
+        onResetLock: _resetLockFromLockScreen,
+      );
+    }
+
     if (account == null || workspace == null) {
       return LoginScreen(
         isBusy: _isSigningIn,
@@ -119,6 +173,8 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
       writingMode: _writingMode,
       themeMode: _themeMode,
       fontScaleStep: _fontScaleStep,
+      motionEffectsEnabled: _motionEffectsEnabled,
+      lockEnabled: _isLockEnabled,
       isLoadingTimeline: _isLoadingTimeline,
       isSaving: _isSaving,
       lastSync: _lastSync,
@@ -127,6 +183,10 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
       onWritingModeChanged: _changeWritingMode,
       onThemeModeChanged: _changeThemeMode,
       onFontScaleStepChanged: _changeFontScaleStep,
+      onMotionEffectsChanged: _changeMotionEffects,
+      onEnableLock: _enableLock,
+      onDisableLock: _disableLock,
+      onChangeLockPassword: _changeLockPassword,
       onSignOut: _signOut,
     );
   }
@@ -136,17 +196,29 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
       final writingMode = await _settingsService.readWritingMode();
       final themeMode = await _settingsService.readThemeMode();
       final fontScaleStep = await _settingsService.readFontScaleStep();
+      final motionEffectsEnabled =
+          await _settingsService.readMotionEffectsEnabled();
+      final lockSettings = await _settingsService.readLockSettings();
       if (mounted) {
         setState(() {
           _writingMode = writingMode;
           _themeMode = themeMode;
           _fontScaleStep = fontScaleStep;
+          _motionEffectsEnabled = motionEffectsEnabled;
+          _isLockEnabled = lockSettings.isEnabled;
         });
       }
       final account = await _authService.restoreSession();
       if (account == null) {
         setState(() {
           _isBootstrapping = false;
+        });
+        return;
+      }
+      if (lockSettings.isEnabled) {
+        setState(() {
+          _account = account;
+          _isLocked = true;
         });
         return;
       }
@@ -213,7 +285,9 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
       _isLoadingTimeline = false;
       _errorMessage = null;
     });
-    _startAutoRefreshTimer();
+    if (!_isLocked) {
+      _startAutoRefreshTimer();
+    }
   }
 
   Future<void> _refreshTimeline() async {
@@ -319,6 +393,80 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _changeMotionEffects(bool enabled) async {
+    if (enabled == _motionEffectsEnabled) {
+      return;
+    }
+    final previous = _motionEffectsEnabled;
+    setState(() {
+      _motionEffectsEnabled = enabled;
+    });
+    try {
+      await _settingsService.writeMotionEffectsEnabled(enabled);
+    } catch (error) {
+      final message = _friendlyError(error);
+      if (mounted) {
+        setState(() {
+          _motionEffectsEnabled = previous;
+          _errorMessage = message;
+        });
+      }
+      _showSnackBar(message);
+    }
+  }
+
+  Future<String?> _enableLock(String password) async {
+    try {
+      await _settingsService.writeLockPassword(password);
+      if (mounted) {
+        setState(() {
+          _isLockEnabled = true;
+        });
+      }
+      return null;
+    } catch (error) {
+      return _friendlyError(error);
+    }
+  }
+
+  Future<String?> _disableLock(String currentPassword) async {
+    if (!await _settingsService.verifyLockPassword(currentPassword)) {
+      return '현재 비밀번호가 맞지 않습니다';
+    }
+    try {
+      await _settingsService.clearLock();
+      if (mounted) {
+        setState(() {
+          _isLockEnabled = false;
+          _isLocked = false;
+        });
+      }
+      return null;
+    } catch (error) {
+      return _friendlyError(error);
+    }
+  }
+
+  Future<String?> _changeLockPassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    if (!await _settingsService.verifyLockPassword(currentPassword)) {
+      return '현재 비밀번호가 맞지 않습니다';
+    }
+    try {
+      await _settingsService.writeLockPassword(newPassword);
+      if (mounted) {
+        setState(() {
+          _isLockEnabled = true;
+        });
+      }
+      return null;
+    } catch (error) {
+      return _friendlyError(error);
+    }
+  }
+
   Future<void> _saveEntry(String content, DateTime timestamp) async {
     final timelineService = _timelineService;
     if (timelineService == null || content.trim().isEmpty) {
@@ -374,6 +522,86 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
       _entries = <TimelineEntry>[];
       _lastSync = null;
       _errorMessage = null;
+      _isLocked = false;
+    });
+  }
+
+  Future<String?> _unlockWithPassword(String password) async {
+    final verified = await _settingsService.verifyLockPassword(password);
+    if (!verified) {
+      return '비밀번호가 맞지 않습니다';
+    }
+
+    final account = _account ?? _authService.account;
+    if (account == null) {
+      return null;
+    }
+
+    if (_workspace != null && _timelineService != null) {
+      return null;
+    }
+
+    try {
+      await _openWorkspace(account);
+      return null;
+    } catch (error) {
+      final message = _friendlyError(error);
+      if (mounted) {
+        setState(() {
+          _errorMessage = message;
+        });
+      }
+      return message;
+    }
+  }
+
+  void _finishUnlockTransition() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isLocked = false;
+    });
+    if (_workspace != null && _timelineService != null) {
+      _startAutoRefreshTimer();
+      unawaited(_refreshTimelineSilently());
+    }
+  }
+
+  Future<void> _resetLockFromLockScreen() async {
+    _stopAutoRefreshTimer();
+    await _settingsService.clearLock();
+    try {
+      await _authService.signOut();
+    } catch (_) {
+      // The reset flow should still return the user to Google sign-in.
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _account = null;
+      _workspace = null;
+      _timelineService = null;
+      _entries = <TimelineEntry>[];
+      _lastSync = null;
+      _errorMessage = null;
+      _isLockEnabled = false;
+      _isLocked = false;
+      _isLoadingTimeline = false;
+      _isSaving = false;
+    });
+    _showSnackBar('잠금 설정이 재설정되었습니다. 다시 로그인해 주세요');
+  }
+
+  void _lockApp() {
+    if (!_isLockEnabled || _account == null || _isLocked) {
+      return;
+    }
+    _stopAutoRefreshTimer();
+    setState(() {
+      _isLocked = true;
+      _isLoadingTimeline = false;
     });
   }
 
@@ -396,6 +624,7 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
   Future<void> _refreshTimelineSilently() async {
     final spreadsheetId = _workspace?.spreadsheetId;
     if (!_isAppInForeground ||
+        _isLocked ||
         spreadsheetId == null ||
         _timelineService == null ||
         _isLoadingTimeline ||
@@ -504,6 +733,7 @@ class _SoloEchoAppState extends State<SoloEchoApp> with WidgetsBindingObserver {
       _errorMessage = null;
       _isLoadingTimeline = false;
       _isSaving = false;
+      _isLocked = false;
     });
     _showSnackBar('세션이 만료되었습니다. 다시 로그인해 주세요');
   }

@@ -19,6 +19,7 @@ class TimelineScreen extends StatefulWidget {
     required this.onRefresh,
     this.searchQuery,
     this.currentSearchEntryIndex,
+    this.revealingTimestamp,
   });
 
   final SoloEchoAccount account;
@@ -27,6 +28,7 @@ class TimelineScreen extends StatefulWidget {
   final Future<void> Function() onRefresh;
   final String? searchQuery;
   final int? currentSearchEntryIndex;
+  final DateTime? revealingTimestamp;
 
   @override
   State<TimelineScreen> createState() => _TimelineScreenState();
@@ -118,7 +120,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
 
   Widget _buildEntry(int index) {
     final isCurrentSearchResult = widget.currentSearchEntryIndex == index;
-    return _TimelineBubble(
+    final bubble = _TimelineBubble(
       key: _keyForIndex(index),
       textKey: isCurrentSearchResult ? _textKeyForIndex(index) : null,
       account: widget.account,
@@ -126,6 +128,10 @@ class _TimelineScreenState extends State<TimelineScreen> {
       searchQuery: widget.searchQuery ?? '',
       isCurrentSearchResult: isCurrentSearchResult,
     );
+    if (widget.revealingTimestamp == widget.entries[index].timestamp) {
+      return _EntryReveal(child: bubble);
+    }
+    return bubble;
   }
 
   GlobalKey _keyForIndex(int index) {
@@ -335,6 +341,33 @@ class _TimelineScreenState extends State<TimelineScreen> {
       textScaler: textScaler,
     )..layout(maxWidth: maxWidth);
     return textPainter.height;
+  }
+}
+
+class _EntryReveal extends StatelessWidget {
+  const _EntryReveal({
+    required this.child,
+  });
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 360),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: (0.55 + value * 0.45).clamp(0.0, 1.0),
+          child: Transform.translate(
+            offset: Offset(0, 30 * (1 - value)),
+            child: child,
+          ),
+        );
+      },
+      child: child,
+    );
   }
 }
 

@@ -378,6 +378,46 @@ void main() {
     await _disposeHome(tester);
   });
 
+  testWidgets('successful save no longer shows moving submit overlay',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: _buildHome(),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'animated entry');
+    await tester.pump();
+    await tester.tap(find.byTooltip('저장'));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey<String>('submit-flight')), findsNothing);
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller?.text, isEmpty);
+
+    await _disposeHome(tester);
+  });
+
+  testWidgets('successful save keeps moving submit overlay disabled',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: _buildHome(motionEffectsEnabled: false),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'quiet entry');
+    await tester.pump();
+    await tester.tap(find.byTooltip('저장'));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey<String>('submit-flight')), findsNothing);
+
+    await _disposeHome(tester);
+  });
+
   testWidgets('enter sends short input and clears after save succeeds',
       (tester) async {
     String? saved;
@@ -765,10 +805,19 @@ HomeScaffold _buildHome({
   WritingMode writingMode = WritingMode.chat,
   AppThemeMode themeMode = AppThemeMode.dark,
   FontScaleStep fontScaleStep = FontScaleStep.defaultValue,
+  bool motionEffectsEnabled = true,
+  bool lockEnabled = false,
   Future<void> Function(String content, DateTime timestamp)? onSave,
   Future<void> Function(WritingMode mode)? onWritingModeChanged,
   Future<void> Function(AppThemeMode mode)? onThemeModeChanged,
   Future<void> Function(FontScaleStep step)? onFontScaleStepChanged,
+  Future<void> Function(bool enabled)? onMotionEffectsChanged,
+  Future<String?> Function(String password)? onEnableLock,
+  Future<String?> Function(String currentPassword)? onDisableLock,
+  Future<String?> Function({
+    required String currentPassword,
+    required String newPassword,
+  })? onChangeLockPassword,
 }) {
   return HomeScaffold(
     account: account,
@@ -780,6 +829,8 @@ HomeScaffold _buildHome({
     writingMode: writingMode,
     themeMode: themeMode,
     fontScaleStep: fontScaleStep,
+    motionEffectsEnabled: motionEffectsEnabled,
+    lockEnabled: lockEnabled,
     isLoadingTimeline: false,
     isSaving: false,
     lastSync: null,
@@ -788,6 +839,15 @@ HomeScaffold _buildHome({
     onWritingModeChanged: onWritingModeChanged ?? (mode) async {},
     onThemeModeChanged: onThemeModeChanged ?? (mode) async {},
     onFontScaleStepChanged: onFontScaleStepChanged ?? (step) async {},
+    onMotionEffectsChanged: onMotionEffectsChanged ?? (enabled) async {},
+    onEnableLock: onEnableLock ?? (password) async => null,
+    onDisableLock: onDisableLock ?? (currentPassword) async => null,
+    onChangeLockPassword: onChangeLockPassword ??
+        ({
+          required currentPassword,
+          required newPassword,
+        }) async =>
+            null,
     onSignOut: () async {},
   );
 }

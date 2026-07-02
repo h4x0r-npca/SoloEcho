@@ -14,6 +14,43 @@ class LoginScreen extends StatelessWidget {
   final bool isBusy;
   final Future<void> Function() onSignIn;
   final String? errorMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    return AuthShell(
+      children: <Widget>[
+        FilledButton.icon(
+          onPressed: isBusy ? null : onSignIn,
+          icon: isBusy
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.login),
+          label: Text(isBusy ? '로그인 중' : 'Google로 계속하기'),
+        ),
+        if (errorMessage != null) ...<Widget>[
+          const SizedBox(height: 16),
+          Text(
+            errorMessage!,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.error,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class AuthShell extends StatelessWidget {
+  const AuthShell({
+    super.key,
+    required this.children,
+  });
+
+  final List<Widget> children;
   static const _logoAsset = 'assets/images/solo_echo_logo_transparent.png';
 
   @override
@@ -54,27 +91,7 @@ class LoginScreen extends StatelessWidget {
                                 ),
                       ),
                       const SizedBox(height: 32),
-                      FilledButton.icon(
-                        onPressed: isBusy ? null : onSignIn,
-                        icon: isBusy
-                            ? const SizedBox.square(
-                                dimension: 18,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.login),
-                        label: Text(isBusy ? '로그인 중' : 'Google로 계속하기'),
-                      ),
-                      if (errorMessage != null) ...<Widget>[
-                        const SizedBox(height: 16),
-                        Text(
-                          errorMessage!,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
-                          ),
-                        ),
-                      ],
+                      ...children,
                     ],
                   ),
                 ),

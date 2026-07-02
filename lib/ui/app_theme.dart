@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 @immutable
 class SoloEchoColors extends ThemeExtension<SoloEchoColors> {
@@ -164,18 +165,33 @@ class SoloEchoTheme {
       fontFamily: 'Pretendard',
     );
     final textTheme = _applyTextColor(base.textTheme, colors.textPrimary);
+    final overlayStyle = switch (brightness) {
+      Brightness.dark => SystemUiOverlayStyle.light.copyWith(
+          statusBarColor: colors.headerBar,
+          systemNavigationBarColor: colors.background,
+          systemNavigationBarDividerColor: colors.divider,
+        ),
+      Brightness.light => SystemUiOverlayStyle.dark.copyWith(
+          statusBarColor: colors.headerBar,
+          systemNavigationBarColor: colors.background,
+          systemNavigationBarDividerColor: colors.divider,
+        ),
+    };
 
     return base.copyWith(
       extensions: <ThemeExtension<dynamic>>[
         colors,
       ],
       scaffoldBackgroundColor: colors.background,
+      canvasColor: colors.background,
+      cardColor: colors.threadCard,
       textTheme: textTheme,
       appBarTheme: AppBarTheme(
         centerTitle: false,
         backgroundColor: colors.headerBar,
         foregroundColor: colors.textPrimary,
         surfaceTintColor: Colors.transparent,
+        systemOverlayStyle: overlayStyle,
       ),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: colors.background,
